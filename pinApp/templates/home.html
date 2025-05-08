@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pinboard - Home</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col items-center justify-center">
+    <div class="bg-white shadow-lg rounded-2xl p-10 w-full max-w-md text-center">
+        <h1 class="text-4xl font-bold mb-6">Welcome to Pinboard</h1>
+        <p class="text-lg text-gray-600 mb-8">Share and discover ideas like never before!</p>
+
+        <div class="space-y-4">
+            <form method="post" action="{% url 'login' %}">
+                {% csrf_token %}
+                <input type="text" name="username" placeholder="Username"
+                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 mb-3">
+                <input type="password" name="password" placeholder="Password"
+                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 mb-3">
+                <button type="submit"
+                        class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-lg transition">
+                    Sign In
+                </button>
+            </form>
+
+            <div class="text-sm text-gray-500">Don't have an account?</div>
+            <a href="{% url 'register' %}"
+               class="inline-block text-blue-500 hover:underline font-medium">
+                Register Here
+            </a>
+        </div>
+    </div>
+</body>
+</html>

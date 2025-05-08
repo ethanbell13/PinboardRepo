@@ -202,7 +202,7 @@ def create_board_view(request):
             errors.append('Invalid comment permissions')
             
         if errors:
-            return render(request, 'board_create.html', {'error': ' '.join(errors)})
+            return render(request, 'create_board.html', {'error': ' '.join(errors)})
         
         try:
             with connection.cursor() as cursor:
@@ -220,10 +220,10 @@ def create_board_view(request):
         except Exception as e:
             # Handle database errors
             print("Board Create error:", str(e))
-            return render(request, 'board_create.html', {'error': f'Error creating board: {str(e)}'})
+            return render(request, 'create_board.html', {'error': f'Error creating board: {str(e)}'})
     
     # GET request - show empty form
-    return render(request, 'board_create.html')
+    return render(request, 'create_board.html')
 
 def process_tags(tags_str, picid):
     """Helper function to handle tag insertion and relationships"""
@@ -353,7 +353,7 @@ def edit_board_view(request, bid):
     except Exception as e:
         messages.error(request, f"Error: {str(e)}")
     
-    return render(request, 'board_edit.html', context)
+    return render(request, 'edit_board.html', context)
 
 def delete_board_view(request, bid):
     if 'username' not in request.session:

@@ -136,6 +136,91 @@ def login_view(request):
     
     return render(request, 'login.html')
 
+def edit_profile_view(request):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    username = request.session['username']
+    context = {}
+    
+    try:
+        with connection.cursor() as cursor:
+            # Get current user data
+            cursor.execute("""
+                SELECT personal_name, passwd 
+                FROM "User" 
+                WHERE uname = %s
+            """, [username])
+            user_data = cursor.fetchone()
+            
+            if not user_data:
+                messages.error(request, "User not found")
+                return redirect('dashboard')
+            
+            context['user'] = {
+                'personal_name': user_data[0],
+            }
+            
+            if request.method == 'POST':
+                personal_name = request.POST.get('personal_name', '').strip()
+                current_password = request.POST.get('current_password', '')
+                new_password = request.POST.get('new_password', '')
+                confirm_password = request.POST.get('confirm_password', '')
+                
+                errors = []
+                updates = []
+                params = []
+                
+                # Validate personal name
+                if not personal_name:
+                    errors.append("Display name is required")
+                else:
+                    updates.append("personal_name = %s")
+                    params.append(personal_name)
+                
+                # Password change logic
+                if current_password or new_password or confirm_password:
+                    # Verify all password fields are filled
+                    if not all([current_password, new_password, confirm_password]):
+                        errors.append("All password fields are required for password change")
+                    else:
+                        # Verify current password
+                        stored_password = user_data[1]
+                        # WARNING: In practice, use proper password hashing comparison!
+                        if current_password != stored_password:
+                            errors.append("Current password is incorrect")
+                        elif new_password != confirm_password:
+                            errors.append("New passwords do not match")
+                        else:
+                            # In practice: Use proper password hashing here!
+                            updates.append("passwd = %s")
+                            params.append(new_password)  # Store properly hashed password
+                
+                if errors:
+                    return render(request, 'edit_profile.html', {
+                        'error': ' '.join(errors),
+                        'user': {'personal_name': personal_name}
+                    })
+                
+                # Build update query
+                if updates:
+                    query = """
+                        UPDATE "User" 
+                        SET {}
+                        WHERE uname = %s
+                    """.format(", ".join(updates))
+                    
+                    params.append(username)
+                    
+                    cursor.execute(query, params)
+                    messages.success(request, "Profile updated successfully")
+                    return redirect('dashboard')
+                
+    except Exception as e:
+        messages.error(request, f"Error updating profile: {str(e)}")
+    
+    return render(request, 'edit_profile.html', context)
+
 def dashboard_view(request):
     if 'username' not in request.session:
         return redirect('login')
@@ -243,8 +328,6 @@ def process_tags(tags_str, picid):
                 VALUES (%s, %s)
                 ON CONFLICT (picid, tname) DO NOTHING
             """, [picid, tag])
-
-
 
 def edit_board_view(request, bid):
     if 'username' not in request.session:

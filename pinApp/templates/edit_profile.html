@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}Edit Profile{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <h2 class="mb-4">Edit Profile</h2>
+      
+      {% if error %}
+      <div class="alert alert-danger">{{ error }}</div>
+      {% endif %}
+      
+      <form method="POST">
+        {% csrf_token %}
+        
+        <div class="mb-3">
+          <label for="personal_name" class="form-label">Display Name</label>
+          <input type="text" class="form-control" id="personal_name" name="personal_name"
+                 value="{{ user.personal_name }}" required>
+        </div>
+
+        <hr class="my-4">
+        
+        <h5 class="mb-3">Change Password</h5>
+        
+        <div class="mb-3">
+          <label for="current_password" class="form-label">Current Password</label>
+          <input type="password" class="form-control" id="current_password" name="current_password">
+        </div>
+        
+        <div class="mb-3">
+          <label for="new_password" class="form-label">New Password</label>
+          <input type="password" class="form-control" id="new_password" name="new_password">
+        </div>
+        
+        <div class="mb-3">
+          <label for="confirm_password" class="form-label">Confirm New Password</label>
+          <input type="password" class="form-control" id="confirm_password" name="confirm_password">
+        </div>
+
+        <div class="d-grid gap-2">
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+          <a href="{% url 'dashboard' %}" class="btn btn-secondary">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

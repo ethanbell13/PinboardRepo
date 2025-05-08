@@ -482,10 +482,10 @@ def delete_pin_view(request, pinid):
     
     return redirect(request.META.get('HTTP_REFERER', 'dashboard'))
 
-# TODO edit profile
 # TODO view pinboards
 # TODO follow streams
 # TODO friend requests
 # TODO search for other users
 # TODO search for other pinboards
 # TODO board comments & likes
+# TODO integrate models into the django admin panel

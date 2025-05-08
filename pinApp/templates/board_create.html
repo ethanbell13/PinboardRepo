@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Create New Board{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <h2 class="mb-4">Create New Board</h2>
+    
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+    
+    <form method="POST">
+      {% csrf_token %}
+      
+      <div class="mb-3">
+        <label for="name" class="form-label">Board Name</label>
+        <input type="text" class="form-control" id="name" name="name" 
+               required maxlength="100">
+      </div>
+      
+      <div class="mb-3">
+        <label for="comment_perms" class="form-label">Comment Permissions</label>
+        <select class="form-select" id="comment_perms" name="comment_perms">
+          <option value="public" selected>Public</option>
+          <option value="friends">Friends Only</option>
+        </select>
+      </div>
+      
+      <button type="submit" class="btn btn-primary">Create Board</button>
+      <a href="{% url 'dashboard' %}" class="btn btn-secondary">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

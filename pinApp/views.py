@@ -109,7 +109,8 @@ def login_view(request):
                         result = cursor.fetchone()
 
                     if result:
-                        personal_name = result[0]
+                        request.session['username'] = username
+                        request.session['personal_name'] = personal_name = result[0]
                         print(f"Personal name found: {personal_name}")
                     else:
                         print("Personal name search failed")
@@ -120,7 +121,7 @@ def login_view(request):
                     messages.error(request, "Invalid username or password.")
                     return render(request, 'login.html')
         except Exception as e:
-                print("Registration error:", str(e))
+                print("Login error:", str(e))
                 messages.error(request, "Something unexpected happended!")
     
     return render(request, 'login.html')
@@ -130,25 +131,84 @@ def dashboard_view(request):
         return redirect('login')
     
     username = request.session['username']
+    context = {}
 
-    # Fetch the personal_name from the Users table
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT personal_name
-              FROM "User"
-             WHERE uname = %s
-            """,
-            [username]
-        )
-        result = cursor.fetchone()
+    try:
+        # Fetch the personal_name from the Users table
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT personal_name, email, created_at
+                FROM "User"
+                WHERE uname = %s
+                """,
+                [username]
+            )
+            result = cursor.fetchone()
 
-    if result:
-        personal_name = result[0]
-        print(f"Personal name found: {personal_name}")
-    else:
-        print("Personal name search failed")
-        personal_name = None
+        if result:
+            context["personal_name"] = result[0]
+            context["email"] = result[1]
+            context["join_date"] = result[2]
+        else:
+            print("Personal name search failed")
+            personal_name = None
+        
+        # Get user's boards
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT bid, name, comment_perms, created_at 
+                FROM board 
+                WHERE uname = %s 
+                ORDER BY created_at DESC
+                LIMIT 8
+            """, [username])
+            columns = [col[0] for col in cursor.description]
+            boards = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        context['boards'] = boards
+        print("Raw DB results: ", boards)
 
-    return render(request, 'dashboard.html', {'personal_name': personal_name})
+    except Exception as e:
+        messages.error(request, f"Error loading dashboard: {str(e)}")
 
+    return render(request, 'dashboard.html', context)
+
+def create_board_view(request):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        comment_perms = request.POST.get('comment_perms', 'public')
+        username = request.session['username']
+        
+        # Validation
+        errors = []
+        if not name:
+            errors.append('Board name is required')
+        if comment_perms not in ['public', 'friends']:
+            errors.append('Invalid comment permissions')
+            
+        if errors:
+            return render(request, 'board_create.html', {'error': ' '.join(errors)})
+        
+        try:
+            with connection.cursor() as cursor:
+                # Insert new board
+                cursor.execute("""
+                    INSERT INTO Board (uname, name, comment_perms)
+                    VALUES (%s, %s, %s)
+                    RETURNING bid
+                """, [username, name, comment_perms])                
+                # bid = cursor.fetchone()[0]
+                
+            messages.success(request, 'Board created successfully!')
+            return redirect('dashboard')
+            
+        except Exception as e:
+            # Handle database errors
+            print("Board Create error:", str(e))
+            return render(request, 'board_create.html', {'error': f'Error creating board: {str(e)}'})
+    
+    # GET request - show empty form
+    return render(request, 'board_create.html')

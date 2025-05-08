@@ -4,29 +4,50 @@
 {% block title %}Dashboard - Pinboard{% endblock %}
 
 {% block content %}
-  <div class="text-center">
-    <h1 class="display-4 mb-4">Hello, {{ personal_name }}!</h1>
-    <p class="lead mb-4">Welcome back. Here are your recent pins:</p>
-    <!-- Example card grid -->
-    <div class="row row-cols-1 row-cols-md-3 g-4">
-      <!-- Replace with dynamic loop -->
-      <div class="col">
-        <div class="card h-100">
-          <div class="card-body">
-            <h5 class="card-title">Sample Pin 1</h5>
-            <p class="card-text">An example description for your pin.</p>
-          </div>
-        </div>
-      </div>
-      <div class="col">
-        <div class="card h-100">
-          <div class="card-body">
-            <h5 class="card-title">Sample Pin 2</h5>
-            <p class="card-text">Another example description for your pin.</p>
-          </div>
-        </div>
-      </div>
-      <!-- Add more pins dynamically -->
+<div class="container">
+  <div class="row mb-4">
+    <div class="col-md-8">
+      <h1 class="display-4">Hello, {{ personal_name }}!</h1>
     </div>
+    <div class="col-md-4 text-end">
+      <a href="{% url 'create_board' %}" class="btn btn-success mt-3">
+        <i class="bi bi-plus-lg"></i> Create New Board
+      </a>
+    </div>
+  </div>
+
+  <!-- Boards Section -->
+  <div class="mb-5">
+    <h3 class="mb-4">Your Boards</h3>
+    {% if boards %}
+    <div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-4">
+      {% for board in boards %}
+      <div class="col">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title">{{ board.name }}</h5>
+            <p class="card-text text-muted small mb-1">
+              Created {{ board.created_at|date:"M d, Y" }}
+            </p>
+            <p class="card-text">
+              <span class="badge bg-secondary">
+                Comments: {{ board.comment_perms }}
+              </span>
+            </p>
+          </div>
+          <div class="card-footer bg-transparent">
+            <a href="#" class="btn btn-sm btn-outline-primary">
+              Edit Board
+            </a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+      You haven't created any boards yet. Click "Create New Board" to get started!
+    </div>
+    {% endif %}
   </div>
 {% endblock %}

@@ -95,9 +95,26 @@ def login_view(request):
                 if cursor.fetchone():
                     # credentials OK
                     print("User successfully found")
-                    request.session['username'] = username
-                    messages.success(request, f"Welcome back, {username}!")
-                    return render(request, 'dashboard.html')
+
+                    # Fetch the personal_name from the Users table
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            SELECT personal_name
+                            FROM "User"
+                            WHERE uname = %s
+                            """,
+                            [username]
+                        )
+                        result = cursor.fetchone()
+
+                    if result:
+                        personal_name = result[0]
+                        print(f"Personal name found: {personal_name}")
+                    else:
+                        print("Personal name search failed")
+                        personal_name = None
+                    return render(request, 'dashboard.html', {'personal_name': personal_name})
                 else:
                     print("User failed to be found")
                     messages.error(request, "Invalid username or password.")
@@ -111,5 +128,27 @@ def login_view(request):
 def dashboard_view(request):
     if 'username' not in request.session:
         return redirect('login')
-    return render(request, 'dashboard.html', {'username': request.session['username']})
+    
+    username = request.session['username']
+
+    # Fetch the personal_name from the Users table
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT personal_name
+              FROM "User"
+             WHERE uname = %s
+            """,
+            [username]
+        )
+        result = cursor.fetchone()
+
+    if result:
+        personal_name = result[0]
+        print(f"Personal name found: {personal_name}")
+    else:
+        print("Personal name search failed")
+        personal_name = None
+
+    return render(request, 'dashboard.html', {'personal_name': personal_name})
 

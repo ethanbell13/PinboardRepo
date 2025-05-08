@@ -1,10 +1,12 @@
 from django.shortcuts import render
 from django.shortcuts import redirect
 from django.contrib import messages
+from django.contrib.messages import get_messages
 from django.db import connection
 
 def home_view(request):
     return render(request, 'home.html')
+
 def register_view(request):
     print("Beginning\n")
     if request.method == 'POST':
@@ -64,3 +66,50 @@ def register_view(request):
         finally:
              cursor.close()
     return render(request, 'register.html')
+
+def logout_view(request):
+    request.session.flush()  # Clear all session data
+    storage = get_messages(request)
+    for _ in storage:
+        pass  # this is enough to clear the message queue
+    return redirect('home')
+
+def login_view(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+
+        print("Before credentials check")
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM "User"
+                    WHERE uname = %s
+                    AND passwd = %s
+                    LIMIT 1
+                    """,
+                    [username, password]
+                )
+                if cursor.fetchone():
+                    # credentials OK
+                    print("User successfully found")
+                    request.session['username'] = username
+                    messages.success(request, f"Welcome back, {username}!")
+                    return render(request, 'dashboard.html')
+                else:
+                    print("User failed to be found")
+                    messages.error(request, "Invalid username or password.")
+                    return render(request, 'login.html')
+        except Exception as e:
+                print("Registration error:", str(e))
+                messages.error(request, "Something unexpected happended!")
+    
+    return render(request, 'login.html')
+
+def dashboard_view(request):
+    if 'username' not in request.session:
+        return redirect('login')
+    return render(request, 'dashboard.html', {'username': request.session['username']})
+

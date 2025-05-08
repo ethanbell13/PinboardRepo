@@ -3,12 +3,19 @@ from django.shortcuts import redirect
 from django.contrib import messages
 from django.contrib.messages import get_messages
 from django.db import connection
+from django.db import transaction
+import base64
 
 def home_view(request):
+    if 'username' in request.session:
+        return redirect('dashboard')
+    
     return render(request, 'home.html')
 
 def register_view(request):
-    print("Beginning\n")
+    if 'username' in request.session:
+        return redirect('dashboard')
+    
     if request.method == 'POST':
         userNameIn = request.POST.get('username')
         emailIn = request.POST.get('email')
@@ -75,6 +82,9 @@ def logout_view(request):
     return redirect('home')
 
 def login_view(request):
+    if 'username' in request.session:
+        return redirect('dashboard')
+    
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
@@ -115,7 +125,7 @@ def login_view(request):
                     else:
                         print("Personal name search failed")
                         personal_name = None
-                    return render(request, 'dashboard.html', {'personal_name': personal_name})
+                    return redirect('dashboard')
                 else:
                     print("User failed to be found")
                     messages.error(request, "Invalid username or password.")
@@ -152,7 +162,9 @@ def dashboard_view(request):
             context["join_date"] = result[2]
         else:
             print("Personal name search failed")
-            personal_name = None
+            context["personal_name"] = None
+            context["email"] = None 
+            context["join_date"] = None
         
         # Get user's boards
         with connection.cursor() as cursor:
@@ -212,3 +224,185 @@ def create_board_view(request):
     
     # GET request - show empty form
     return render(request, 'board_create.html')
+
+def process_tags(tags_str, picid):
+    """Helper function to handle tag insertion and relationships"""
+    tags = [tag.strip().lower() for tag in tags_str.split(',') if tag.strip()]
+    with connection.cursor() as cursor:
+        for tag in tags:
+            # Insert tag if not exists
+            cursor.execute("""
+                INSERT INTO Tag (tname) 
+                VALUES (%s)
+                ON CONFLICT (tname) DO NOTHING
+            """, [tag])
+            
+            # Create picture-tag relationship
+            cursor.execute("""
+                INSERT INTO PictureTag (picid, tname)
+                VALUES (%s, %s)
+                ON CONFLICT (picid, tname) DO NOTHING
+            """, [picid, tag])
+
+
+
+def edit_board_view(request, bid):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    username = request.session['username']
+    context = {}
+    
+    try:
+        with connection.cursor() as cursor:
+            # Verify board ownership
+            cursor.execute("""
+                SELECT bid, name, comment_perms, created_at 
+                FROM board 
+                WHERE bid = %s AND uname = %s
+            """, [bid, username])
+            
+            board_data = cursor.fetchone()
+            if not board_data:
+                messages.error(request, "Board not found or access denied")
+                return redirect('dashboard')
+            
+            # Convert board data to dict
+            columns = [col[0] for col in cursor.description]
+            context['board'] = dict(zip(columns, board_data))
+            
+            # Handle form submissions
+            if request.method == 'POST':
+                if 'name' in request.POST:  # Board update
+                    new_name = request.POST.get('name').strip()
+                    new_perms = request.POST.get('comment_perms')
+                    
+                    cursor.execute("""
+                        UPDATE board 
+                        SET name = %s, comment_perms = %s 
+                        WHERE bid = %s
+                    """, [new_name, new_perms, bid])
+                    messages.success(request, "Board updated successfully")
+                    return redirect('edit_board', bid=bid)
+                
+                # Image handling
+                tags = request.POST.get('tags', '')
+                if 'image' in request.FILES:  # Image upload
+                    image_file = request.FILES['image']
+                    src_url = request.POST.get('source_url')
+                    
+                    # Convert image to bytes
+                    img_bytes = b''
+                    for chunk in image_file.chunks():
+                        img_bytes += chunk
+                    
+                    with transaction.atomic():
+                        # Create pin
+                        cursor.execute("""
+                            INSERT INTO Pin (uname, bid)
+                            VALUES (%s, %s)
+                            RETURNING pinid
+                        """, [username, bid])
+                        pin_id = cursor.fetchone()[0]
+                        
+                        # Create picture
+                        cursor.execute("""
+                            INSERT INTO Picture (org_pinid, img_data, src_url)
+                            VALUES (%s, %s, %s)
+                            RETURNING picid
+                        """, [pin_id, img_bytes, src_url])
+                        pic_id = cursor.fetchone()[0]
+                        
+                        # Update pin with picid
+                        cursor.execute("""
+                            UPDATE Pin SET picid = %s 
+                            WHERE pinid = %s
+                        """, [pic_id, pin_id])
+
+                        # Process tags
+                        if tags:
+                            process_tags(tags, pic_id)
+                        
+                    messages.success(request, "Image uploaded successfully")
+                    return redirect('edit_board', bid=bid)
+            
+            # Get existing pins with tags
+            cursor.execute("""
+                SELECT p.pinid, pic.picid, pic.img_data, pic.src_url,
+                       COALESCE(array_agg(t.tname), '{}'::varchar[]) as tags
+                FROM Pin p
+                JOIN Picture pic ON p.picid = pic.picid
+                LEFT JOIN PictureTag pt ON pic.picid = pt.picid
+                LEFT JOIN Tag t ON pt.tname = t.tname
+                WHERE p.bid = %s
+                GROUP BY p.pinid, pic.picid
+                ORDER BY p.created_at DESC
+            """, [bid])
+            
+            pins = []
+            for row in cursor.fetchall():
+                pins.append({
+                    'pinid': row[0],
+                    'picid': row[1],
+                    'img_data': base64.b64encode(row[2]).decode('utf-8'),
+                    'src_url': row[3],
+                    'tags': row[4]
+                })
+            context['pins'] = pins
+            
+    except Exception as e:
+        messages.error(request, f"Error: {str(e)}")
+    
+    return render(request, 'board_edit.html', context)
+
+def delete_board_view(request, bid):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    try:
+        with connection.cursor() as cursor:
+            # Verify ownership before deletion
+            cursor.execute("""
+                DELETE FROM board 
+                WHERE bid = %s AND uname = %s
+            """, [bid, request.session['username']])
+            
+            if cursor.rowcount == 0:
+                messages.error(request, "Board not found or access denied")
+            else:
+                messages.success(request, "Board deleted successfully")
+                
+    except Exception as e:
+        messages.error(request, f"Deletion error: {str(e)}")
+    
+    return redirect('dashboard')
+
+def delete_pin_view(request, pinid):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    try:
+        with connection.cursor() as cursor:
+            # Verify ownership before deletion
+            cursor.execute("""
+                DELETE FROM Pin 
+                WHERE pinid = %s AND uname = %s
+            """, [pinid, request.session['username']])
+            
+            if cursor.rowcount == 0:
+                messages.error(request, "Pin not found or access denied")
+            else:
+                messages.success(request, "Pin deleted successfully")
+                
+    except Exception as e:
+        messages.error(request, f"Deletion error: {str(e)}")
+    
+    return redirect(request.META.get('HTTP_REFERER', 'dashboard'))
+
+# TODO edit profile
+# TODO view pinboards
+# TODO follow streams
+# TODO friend requests
+# TODO search for other users
+# TODO search for other pinboards
+# TODO board comments & likes

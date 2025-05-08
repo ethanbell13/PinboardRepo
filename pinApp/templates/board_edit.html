@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Edit {{ board.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+  <!-- Board Header -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>{{ board.name }}</h1>
+    <div>
+      <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+        Delete Board
+      </button>
+    </div>
+  </div>
+
+  <!-- Edit Board Form -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="POST" id="boardForm">
+        {% csrf_token %}
+        <div class="row">
+          <div class="col-md-8 mb-3">
+            <label for="boardName" class="form-label">Board Name</label>
+            <input type="text" class="form-control" id="boardName" name="name" 
+                   value="{{ board.name }}" required>
+          </div>
+          <div class="col-md-4 mb-3">
+            <label for="commentPerms" class="form-label">Comment Permissions</label>
+            <select class="form-select" id="commentPerms" name="comment_perms">
+              <option value="public" {% if board.comment_perms == 'public' %}selected{% endif %}>
+                Public
+              </option>
+              <option value="friends" {% if board.comment_perms == 'friends' %}selected{% endif %}>
+                Friends Only
+              </option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Image Upload Section -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h3 class="card-title mb-3">Add New Image</h3>
+      <form method="POST" enctype="multipart/form-data" id="uploadForm">
+        {% csrf_token %}
+        <div class="mb-3">
+          <input class="form-control" type="file" name="image" accept="image/*" required>
+        </div>
+        <div class="mb-3">
+          <label for="sourceUrl" class="form-label">Source URL</label>
+          <input type="url" class="form-control" name="source_url" 
+                 placeholder="https://example.com" required>
+        </div>
+        <div class="mb-3">
+            <label for="tags" class="form-label">Tags (comma-separated)</label>
+            <input type="text" class="form-control" name="tags" 
+                    placeholder="art, design, inspiration">
+        </div>
+        <button type="submit" class="btn btn-success">Upload Image</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Existing Images Grid -->
+  <h3 class="mb-3">Board Content</h3>
+  <div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-4">
+    {% for pin in pins %}
+    <div class="col">
+      <div class="card h-100">
+        <img src="data:image/png;base64,{{ pin.img_data }}" 
+             class="card-img-top" alt="Uploaded image">
+        <div class="card-body">
+          <div class="mb-2">
+            {% for tag in pin.tags %}
+            <span class="badge bg-secondary me-1">{{ tag }}</span>
+            {% endfor %}
+          </div>
+          <a href="{{ pin.src_url }}" target="_blank" class="small d-block mb-2">Source</a>
+          <form method="POST" action="{% url 'delete_pin' pin.pinid %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              Delete
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+      <div class="alert alert-info">No images in this board yet.</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Delete Board Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Confirm Deletion</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        Are you sure you want to permanently delete this board and all its contents?
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form method="POST" action="{% url 'delete_board' board.bid %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger">Delete Forever</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

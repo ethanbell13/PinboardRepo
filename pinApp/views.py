@@ -1046,7 +1046,6 @@ def liked_pins_view(request):
 # TODO Fix duplicate likes issue (also duplicates tags)
 
 # TODO search images by tag
-# TODO browse liked pins
 # TODO follow streams
 # TODO implement repinning
 

@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block title %}Liked Pins - Pinboard{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h1>Liked Pins</h1>
+                <p class="lead">Pins you've liked across all boards</p>
+            </div>
+            <a href="{% url 'dashboard' %}" 
+               class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-4">
+        {% for pin in pins %}
+        <div class="col">
+            <a href="{% url 'view_pin' pin.pinid %}" class="text-decoration-none">
+                <div class="card h-100">
+                    <img src="data:image/png;base64,{{ pin.img_base64 }}" 
+                         class="card-img-top" alt="Pin image"
+                         style="height: 200px; object-fit: cover;">
+                    <div class="card-body">
+                        <div class="mb-2">
+                            {% for tag in pin.tags %}
+                            <span class="badge bg-secondary me-1">{{ tag }}</span>
+                            {% endfor %}
+                        </div>
+                        <small class="text-muted d-block">
+                            From board: 
+                            <a href="{% url 'view_board' pin.board_id %}" 
+                               class="text-decoration-none">
+                                {{ pin.board_name }}
+                            </a>
+                        </small>
+                        <small class="text-muted">
+                            By 
+                            <a href="{% url 'user_profile' pin.owner_uname %}" 
+                               class="text-decoration-none">
+                                {{ pin.owner_name }}
+                            </a>
+                        </small>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="alert alert-info">You haven't liked any pins yet.</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

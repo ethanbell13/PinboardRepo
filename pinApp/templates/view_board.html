@@ -15,8 +15,8 @@
                     on {{ board.created_at|date:"M d, Y" }}
                 </p>
             </div>
-            <a href="{% url 'user_profile' board.uname %}" class="btn btn-outline-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Profile
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
             </a>
         </div>
     </div>

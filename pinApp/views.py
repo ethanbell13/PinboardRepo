@@ -991,8 +991,61 @@ def handle_friend_request(request, username, action):
 
     return redirect('user_profile', username=receiver)
 
+def liked_pins_view(request):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    username = request.session['username']
+    context = {}
+    
+    try:
+        with connection.cursor() as cursor:
+            # Get all pins liked by the user with image data from Picture
+            cursor.execute("""
+                SELECT 
+                    p.pinid, 
+                    pic.img_data, 
+                    pic.src_url,
+                    ARRAY_AGG(t.tname) FILTER (WHERE t.tname IS NOT NULL) AS tags,
+                    b.bid AS board_id, 
+                    b.name AS board_name,
+                    u.uname AS owner_uname, 
+                    u.personal_name AS owner_name,
+                    l.created_at AS liked_at
+                FROM "Like" l
+                JOIN Pin p ON l.org_pinid = p.pinid
+                JOIN Picture pic ON p.picid = pic.picid
+                LEFT JOIN PictureTag pt ON pic.picid = pt.picid
+                LEFT JOIN Tag t ON pt.tname = t.tname
+                JOIN Board b ON p.bid = b.bid
+                JOIN "User" u ON b.uname = u.uname
+                WHERE l.uname = %s
+                GROUP BY p.pinid, pic.img_data, pic.src_url, 
+                         b.bid, b.name, u.uname, u.personal_name, l.created_at
+                ORDER BY l.created_at DESC
+            """, [username])
+            
+            columns = [col[0] for col in cursor.description]
+            pins = []
+            for row in cursor.fetchall():
+                pin_data = dict(zip(columns, row))
+                # Convert BYTEA to base64
+                img_bytes = pin_data['img_data']
+                pin_data['img_base64'] = base64.b64encode(img_bytes).decode('utf-8') if img_bytes else ''
+                pins.append(pin_data)
+            
+            context['pins'] = pins
+
+    except Exception as e:
+        print(f"Error loading liked pins: {str(e)}")
+        messages.error(request, f"Error loading liked pins: {str(e)}")
+        return redirect('dashboard')
+
+    return render(request, 'liked_pins.html', context)
+
 # TODO Fix duplicate likes issue (also duplicates tags)
 
+# TODO search images by tag
 # TODO browse liked pins
 # TODO follow streams
 # TODO implement repinning

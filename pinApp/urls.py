@@ -17,7 +17,8 @@ from .views import (home_view,
                     search_view,
                     user_profile_view,
                     send_friend_request,
-                    handle_friend_request)
+                    handle_friend_request,
+                    liked_pins_view)
 
 urlpatterns = [
     path('', home_view, name='home'),
@@ -39,4 +40,5 @@ urlpatterns = [
     path('user/<str:username>/', user_profile_view, name='user_profile'),
     path('friend_request/<str:username>/', send_friend_request, name='send_friend_request'),
     path('friend_request/<str:username>/<str:action>/', handle_friend_request, name='handle_friend_request'),
+    path('liked-pins/', liked_pins_view, name='liked_pins'),
 ]

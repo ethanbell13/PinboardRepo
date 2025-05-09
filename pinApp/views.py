@@ -40,7 +40,6 @@ def register_view(request):
             if cursor.fetchone():
                 messages.error(request, "That username is not available.")
                 return render(request, 'register.html')
-            print("After unique username check\n")
             cursor.execute(
                 """
                 select 1
@@ -89,7 +88,6 @@ def login_view(request):
         username = request.POST.get('username')
         password = request.POST.get('password')
 
-        print("Before credentials check")
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -186,21 +184,18 @@ def edit_profile_view(request):
                     else:
                         # Verify current password
                         stored_password = user_data[1]
-                        # WARNING: In practice, use proper password hashing comparison!
+                        # TODO use proper password hashing comparison in production
                         if current_password != stored_password:
                             errors.append("Current password is incorrect")
                         elif new_password != confirm_password:
                             errors.append("New passwords do not match")
                         else:
-                            # In practice: Use proper password hashing here!
+                            # TODO use proper password hashing comparison in production
                             updates.append("passwd = %s")
-                            params.append(new_password)  # Store properly hashed password
+                            params.append(new_password)
                 
                 if errors:
-                    return render(request, 'edit_profile.html', {
-                        'error': ' '.join(errors),
-                        'user': {'personal_name': personal_name}
-                    })
+                    return render(request, 'edit_profile.html', {'error': ' '.join(errors), 'user': {'personal_name': personal_name}})
                 
                 # Build update query
                 if updates:
@@ -215,7 +210,6 @@ def edit_profile_view(request):
                     cursor.execute(query, params)
                     messages.success(request, "Profile updated successfully")
                     return redirect('dashboard')
-                
     except Exception as e:
         messages.error(request, f"Error updating profile: {str(e)}")
     
@@ -311,23 +305,32 @@ def create_board_view(request):
     return render(request, 'create_board.html')
 
 def process_tags(tags_str, picid):
-    """Helper function to handle tag insertion and relationships"""
+    """Update tags for a specific picture"""
     tags = [tag.strip().lower() for tag in tags_str.split(',') if tag.strip()]
+    
     with connection.cursor() as cursor:
-        for tag in tags:
-            # Insert tag if not exists
-            cursor.execute("""
-                INSERT INTO Tag (tname) 
-                VALUES (%s)
-                ON CONFLICT (tname) DO NOTHING
-            """, [tag])
+        try:
+            # Remove existing tags
+            cursor.execute("DELETE FROM PictureTag WHERE picid = %s", [picid])
             
-            # Create picture-tag relationship
-            cursor.execute("""
-                INSERT INTO PictureTag (picid, tname)
-                VALUES (%s, %s)
-                ON CONFLICT (picid, tname) DO NOTHING
-            """, [picid, tag])
+            # Insert new tags
+            for tag in tags:
+                # Insert tag if new
+                cursor.execute("""
+                    INSERT INTO Tag (tname)
+                    VALUES (%s)
+                    ON CONFLICT (tname) DO NOTHING
+                """, [tag])
+                
+                # Link tag to picture
+                cursor.execute("""
+                    INSERT INTO PictureTag (picid, tname)
+                    VALUES (%s, %s)
+                    ON CONFLICT (picid, tname) DO NOTHING
+                """, [picid, tag])
+        
+        except Exception as e:
+            print(f"Tag processing error: {str(e)}")
 
 def edit_board_view(request, bid):
     if 'username' not in request.session:
@@ -356,9 +359,14 @@ def edit_board_view(request, bid):
             
             # Handle form submissions
             if request.method == 'POST':
-                if 'name' in request.POST:  # Board update
-                    new_name = request.POST.get('name').strip()
-                    new_perms = request.POST.get('comment_perms')
+                # Board metadata update
+                if 'name' in request.POST:
+                    new_name = request.POST.get('name', '').strip()
+                    new_perms = request.POST.get('comment_perms', 'public')
+                    
+                    if not new_name:
+                        messages.error(request, "Board name cannot be empty")
+                        return redirect('edit_board', bid=bid)
                     
                     cursor.execute("""
                         UPDATE board 
@@ -368,46 +376,82 @@ def edit_board_view(request, bid):
                     messages.success(request, "Board updated successfully")
                     return redirect('edit_board', bid=bid)
                 
-                # Image handling
-                tags = request.POST.get('tags', '')
-                if 'image' in request.FILES:  # Image upload
+                # Tag update handling
+                if 'picid' in request.POST and 'tags' in request.POST:
+                    picid = request.POST['picid']
+                    new_tags = request.POST['tags']
+                    
+                    try:
+                        # Verify picture ownership
+                        cursor.execute("""
+                            SELECT 1 FROM Picture p
+                            JOIN Pin pi ON p.org_pinid = pi.pinid
+                            JOIN Board b ON pi.bid = b.bid
+                            WHERE p.picid = %s AND b.uname = %s
+                        """, [picid, username])
+                        
+                        if not cursor.fetchone():
+                            messages.error(request, "Permission denied")
+                            return redirect('edit_board', bid=bid)
+                        
+                        # Process tag update
+                        process_tags(new_tags, picid)
+                        messages.success(request, "Tags updated successfully")
+                        return redirect('edit_board', bid=bid)
+                    
+                    except Exception as e:
+                        messages.error(request, f"Error updating tags: {str(e)}")
+                        return redirect('edit_board', bid=bid)
+                
+                # Image upload handling
+                if 'image' in request.FILES:
                     image_file = request.FILES['image']
-                    src_url = request.POST.get('source_url')
+                    src_url = request.POST.get('source_url', '')
+                    tags = request.POST.get('tags', '')
                     
-                    # Convert image to bytes
-                    img_bytes = b''
-                    for chunk in image_file.chunks():
-                        img_bytes += chunk
+                    if not src_url:
+                        messages.error(request, "Source URL is required")
+                        return redirect('edit_board', bid=bid)
                     
-                    with transaction.atomic():
-                        # Create pin
-                        cursor.execute("""
-                            INSERT INTO Pin (uname, bid)
-                            VALUES (%s, %s)
-                            RETURNING pinid
-                        """, [username, bid])
-                        pin_id = cursor.fetchone()[0]
+                    try:
+                        # Convert image to bytes
+                        img_bytes = b''
+                        for chunk in image_file.chunks():
+                            img_bytes += chunk
                         
-                        # Create picture
-                        cursor.execute("""
-                            INSERT INTO Picture (org_pinid, img_data, src_url)
-                            VALUES (%s, %s, %s)
-                            RETURNING picid
-                        """, [pin_id, img_bytes, src_url])
-                        pic_id = cursor.fetchone()[0]
-                        
-                        # Update pin with picid
-                        cursor.execute("""
-                            UPDATE Pin SET picid = %s 
-                            WHERE pinid = %s
-                        """, [pic_id, pin_id])
-
-                        # Process tags
-                        if tags:
-                            process_tags(tags, pic_id)
-                        
-                    messages.success(request, "Image uploaded successfully")
-                    return redirect('edit_board', bid=bid)
+                        with transaction.atomic():
+                            # Create pin
+                            cursor.execute("""
+                                INSERT INTO Pin (uname, bid)
+                                VALUES (%s, %s)
+                                RETURNING pinid
+                            """, [username, bid])
+                            pin_id = cursor.fetchone()[0]
+                            
+                            # Create picture
+                            cursor.execute("""
+                                INSERT INTO Picture (org_pinid, img_data, src_url)
+                                VALUES (%s, %s, %s)
+                                RETURNING picid
+                            """, [pin_id, img_bytes, src_url])
+                            pic_id = cursor.fetchone()[0]
+                            
+                            # Update pin with picid
+                            cursor.execute("""
+                                UPDATE Pin SET picid = %s 
+                                WHERE pinid = %s
+                            """, [pic_id, pin_id])
+                            
+                            # Process tags
+                            if tags:
+                                process_tags(tags, pic_id)
+                                
+                        messages.success(request, "Image uploaded successfully with tags")
+                        return redirect('edit_board', bid=bid)
+                    
+                    except Exception as e:
+                        messages.error(request, f"Error uploading image: {str(e)}")
+                        return redirect('edit_board', bid=bid)
             
             # Get existing pins with tags
             cursor.execute("""
@@ -434,7 +478,7 @@ def edit_board_view(request, bid):
             context['pins'] = pins
             
     except Exception as e:
-        messages.error(request, f"Error: {str(e)}")
+        messages.error(request, "Error processing request")
     
     return render(request, 'edit_board.html', context)
 
@@ -482,9 +526,11 @@ def delete_pin_view(request, pinid):
     
     return redirect(request.META.get('HTTP_REFERER', 'dashboard'))
 
+# TODO edit tags
 # TODO view pinboards
 # TODO follow streams
 # TODO friend requests
+# TODO see friends list
 # TODO search for other users
 # TODO search for other pinboards
 # TODO board comments & likes

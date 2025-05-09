@@ -8,7 +8,7 @@ from .views import (home_view,
                     create_board_view, 
                     edit_board_view, 
                     delete_board_view, 
-                    delete_pin_view)
+                    delete_pin_view,)
 
 urlpatterns = [
     path('', home_view, name='home'),

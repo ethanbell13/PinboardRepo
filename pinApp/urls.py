@@ -13,7 +13,8 @@ from .views import (home_view,
                     pin_view,
                     like_pin,
                     comment_pin,
-                    delete_comment,)
+                    delete_comment,
+                    search_view,)
 
 urlpatterns = [
     path('', home_view, name='home'),
@@ -31,4 +32,5 @@ urlpatterns = [
     path('pin/<int:pinid>/like/', like_pin, name='like_pin'),
     path('pin/<int:pinid>/comment/', comment_pin, name='post_comment'),
     path('comment/<int:cid>/delete/', delete_comment, name='delete_comment'),
+    path('search/', search_view, name='search'),
 ]

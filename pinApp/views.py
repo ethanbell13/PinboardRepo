@@ -768,6 +768,43 @@ def delete_comment(request, cid):
     
     return redirect('view_pin', pinid=pinid)
 
+def search_view(request):
+    query = request.GET.get('q', '').strip()
+    context = {'query': query}
+    
+    if query:
+        try:
+            # Search Users
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT uname, personal_name, created_at 
+                    FROM "User"
+                    WHERE uname ILIKE %s OR personal_name ILIKE %s
+                    LIMIT 10
+                """, [f'%{query}%', f'%{query}%'])
+                context['users'] = [
+                    dict(zip([col[0] for col in cursor.description], row))
+                    for row in cursor.fetchall()
+                ]
+
+            # Search Boards
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT bid, name, created_at, uname 
+                    FROM board 
+                    WHERE name ILIKE %s
+                    ORDER BY created_at DESC
+                    LIMIT 12
+                """, [f'%{query}%'])
+                context['boards'] = [
+                    dict(zip([col[0] for col in cursor.description], row))
+                    for row in cursor.fetchall()
+                ]
+
+        except Exception as e:
+            messages.error(request, f"Search error: {str(e)}")
+    
+    return render(request, 'search_results.html', context)
 
 # TODO Fix duplicate likes issue
 

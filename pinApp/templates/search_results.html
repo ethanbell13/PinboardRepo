@@ -1,0 +1,60 @@
+<!-- search_results.html -->
+{% extends 'base.html' %}
+
+{% block title %}Search Results{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-4">Search Results for "{{ query }}"</h2>
+
+  <div class="row">
+    <!-- Users Results -->
+    <div class="col-md-6">
+      <h4 class="mb-3">Users</h4>
+      {% if users %}
+        <div class="list-group">
+          {% for user in users %}
+          <a href="#" class="list-group-item list-group-item-action">
+            <div class="d-flex w-100 justify-content-between">
+              <h5 class="mb-1">{{ user.personal_name }}</h5>
+              <small>@{{ user.uname }}</small>
+            </div>
+            <small>Joined {{ user.created_at|date:"M Y" }}</small>
+          </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-info">No users found</div>
+      {% endif %}
+    </div>
+
+    <!-- Boards Results -->
+    <div class="col-md-6">
+      <h4 class="mb-3">Boards</h4>
+      {% if boards %}
+        <div class="row row-cols-1 g-3">
+          {% for board in boards %}
+          <div class="col">
+            <div class="card h-100">
+              <div class="card-body">
+                <h5 class="card-title">{{ board.name }}</h5>
+                <p class="card-text text-muted small">
+                  Created by @{{ board.uname }}<br>
+                  {{ board.created_at|date:"M d, Y" }}
+                </p>
+                <a href="{% url 'view_board' board.bid %}" 
+                   class="btn btn-sm btn-outline-primary">
+                  View Board
+                </a>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-info">No boards found</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

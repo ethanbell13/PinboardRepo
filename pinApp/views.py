@@ -995,8 +995,6 @@ def handle_friend_request(request, username, action):
 
 # TODO browse liked pins
 # TODO follow streams
-# TODO friend requests
-# TODO see friends list
 # TODO implement repinning
 
 # TODO integrate models into the django admin panel

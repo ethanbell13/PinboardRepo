@@ -37,12 +37,14 @@
           </div>
           <div class="card-footer bg-transparent">
             <div class="d-flex justify-content-center gap-2">
-              <a href="{% url 'view_board' board.bid %}" class="btn btn-sm btn-outline-primary">
+              <a href="{% url 'view_board' board.bid %}" 
+                 class="btn btn-sm btn-outline-primary">
                 View Board
               </a>
-              <a href="{% url 'edit_board' board.bid %}" class="btn btn-sm btn-outline-primary">
-                Edit Board
-              </a>
+                <a href="{% url 'edit_board' board.bid %}" 
+                   class="btn btn-sm btn-outline-secondary">
+                  Edit Board
+                </a>
             </div>
           </div>          
         </div>

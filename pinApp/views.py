@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.messages import get_messages
 from django.db import connection
 from django.db import transaction
+from django.http import Http404
 import base64
 
 def home_view(request):
@@ -209,7 +210,7 @@ def edit_profile_view(request):
                     
                     cursor.execute(query, params)
                     messages.success(request, "Profile updated successfully")
-                    return redirect('dashboard')
+                    return redirect('user_profile', username=request.session.username)
     except Exception as e:
         messages.error(request, f"Error updating profile: {str(e)}")
     
@@ -531,7 +532,7 @@ def board_view(request, bid):
         with connection.cursor() as cursor:
             # Get board metadata
             cursor.execute("""
-                SELECT b.name, u.personal_name, b.created_at
+                SELECT b.name, u.personal_name, b.created_at, u.uname, u.personal_name 
                 FROM board b
                 JOIN "User" u ON b.uname = u.uname
                 WHERE b.bid = %s
@@ -568,7 +569,9 @@ def board_view(request, bid):
                     'name': board_data[0],
                     'owner': board_data[1],
                     'created_at': board_data[2],
-                    'bid': bid
+                    'bid': bid,
+                    'uname': board_data[3],
+                    'owner': board_data[4]
                 },
                 'pins': pins
             }
@@ -769,6 +772,9 @@ def delete_comment(request, cid):
     return redirect('view_pin', pinid=pinid)
 
 def search_view(request):
+    if 'username' not in request.session:
+        return redirect('login')
+    
     query = request.GET.get('q', '').strip()
     context = {'query': query}
     
@@ -806,15 +812,191 @@ def search_view(request):
     
     return render(request, 'search_results.html', context)
 
-# TODO Fix duplicate likes issue
+def user_profile_view(request, username):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    context = {}
+    viewer = request.session['username']
+    try:
+        # Get profile user details
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT uname, personal_name, email, created_at 
+                FROM "User" 
+                WHERE uname = %s
+            """, [username])
+            profile_user = cursor.fetchone()
+            
+        if not profile_user:
+            raise Http404("User not found")
+
+        context['profile_user'] = {
+            'uname': profile_user[0],
+            'personal_name': profile_user[1],
+            'email': profile_user[2],
+            'join_date': profile_user[3]
+        }
+
+        # Get user's boards
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT bid, name, comment_perms, created_at 
+                FROM board 
+                WHERE uname = %s 
+                ORDER BY created_at DESC
+            """, [username])
+            columns = [col[0] for col in cursor.description]
+            context['boards'] = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        # Get friends list if viewing own profile
+        if viewer == username:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT CASE
+                        WHEN f.uname1 = %s THEN f.uname2
+                        ELSE f.uname1
+                        END AS friend_uname,
+                        u.personal_name
+                    FROM Friend f
+                    JOIN "User" u ON 
+                        (f.uname1 = u.uname OR f.uname2 = u.uname)
+                        AND u.uname != %s
+                    WHERE %s IN (f.uname1, f.uname2)
+                    ORDER BY u.personal_name
+                """, [username, username, username])
+                columns = [col[0] for col in cursor.description]
+                context['friends'] = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        # Check friend status if not viewing own profile
+        if viewer != username:
+            with connection.cursor() as cursor:
+                # Check friendship
+                uname1, uname2 = sorted([viewer, username])
+                cursor.execute("""
+                    SELECT 1 FROM Friend
+                    WHERE uname1 = %s AND uname2 = %s
+                """, [uname1, uname2])
+                is_friend = cursor.fetchone() is not None
+
+                if is_friend:
+                    context['friend_status'] = 'accepted'
+                else:
+                    # Check pending requests
+                    cursor.execute("""
+                        SELECT status FROM friendrequest 
+                        WHERE (sender_uname = %s AND receiver_uname = %s)
+                           OR (sender_uname = %s AND receiver_uname = %s)
+                        ORDER BY sent_at DESC 
+                        LIMIT 1
+                    """, [viewer, username, username, viewer])
+                    friend_request = cursor.fetchone()
+                    context['friend_status'] = friend_request[0] if friend_request else None
+
+        else:
+            # Get incoming friend requests for own profile
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT sender_uname, sent_at 
+                    FROM FriendRequest 
+                    WHERE receiver_uname = %s AND status = 'pending'
+                """, [username])
+                columns = [col[0] for col in cursor.description]
+                context['incoming_requests'] = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    except Exception as e:
+        messages.error(request, f"Error loading profile: {str(e)}")
+        print(f"Error loading profile: {str(e)}")
+        return redirect('dashboard')
+
+    return render(request, 'user_profile.html', context)
+
+def send_friend_request(request, username):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    sender = request.session['username']
+    receiver = username
+
+    if sender == receiver:
+        messages.error(request, "You cannot send a friend request to yourself.")
+        return redirect('user_profile', username=username)
+
+    try:
+        with connection.cursor() as cursor:
+            # Check if request already exists
+            cursor.execute("""
+                SELECT status FROM friendrequest 
+                WHERE (sender_uname = %s AND receiver_uname = %s)
+                   OR (sender_uname = %s AND receiver_uname = %s)
+            """, [sender, receiver, receiver, sender])
+            
+            existing = cursor.fetchone()
+            if existing:
+                if existing[0] == 'pending':
+                    messages.info(request, "Friend request already pending.")
+                elif existing[0] == 'accepted':
+                    messages.info(request, "You are already friends.")
+                return redirect('user_profile', username=username)
+
+            # Create new request
+            cursor.execute("""
+                INSERT INTO friendrequest (sender_uname, receiver_uname, status, sent_at)
+                VALUES (%s, %s, 'pending', NOW())
+            """, [sender, receiver])
+            
+            messages.success(request, "Friend request sent successfully!")
+
+    except Exception as e:
+        print(f"Error sending friend request: {str(e)}")
+        messages.error(request, f"Error sending friend request: {str(e)}")
+
+    return redirect('user_profile', username=username)
+
+def handle_friend_request(request, username, action):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    receiver = request.session['username']
+    sender = username
+
+    if action not in ['accept', 'reject']:
+        messages.error(request, "Invalid action")
+        return redirect('user_profile', username=receiver)
+
+    try:
+        with connection.cursor() as cursor:
+            # Update friend request status
+            cursor.execute("""
+                UPDATE friendrequest
+                SET status = %s
+                WHERE sender_uname = %s AND receiver_uname = %s
+                AND status = 'pending'
+            """, ['accepted' if action == 'accept' else 'rejected', sender, receiver])
+
+            if action == 'accept':
+                # Determine alphabetical order for friend pair
+                uname1, uname2 = sorted([sender, receiver])
+                # Add friendship relation
+                cursor.execute("""
+                    INSERT INTO Friend (uname1, uname2)
+                    VALUES (%s, %s)
+                    ON CONFLICT (uname1, uname2) DO NOTHING
+                """, [uname1, uname2])
+
+            messages.success(request, f"Friend request {action}ed successfully!")
+
+    except Exception as e:
+        messages.error(request, f"Error processing request: {str(e)}")
+
+    return redirect('user_profile', username=receiver)
+
+# TODO Fix duplicate likes issue (also duplicates tags)
 
 # TODO browse liked pins
 # TODO follow streams
 # TODO friend requests
 # TODO see friends list
-# TODO search for other users
-# TODO search for other pinboards
-# TODO board comments & likes
 # TODO implement repinning
 
 # TODO integrate models into the django admin panel

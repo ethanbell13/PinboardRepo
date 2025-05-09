@@ -14,7 +14,7 @@
       {% if users %}
         <div class="list-group">
           {% for user in users %}
-          <a href="#" class="list-group-item list-group-item-action">
+          <a href="{% url 'user_profile' user.uname %}" class="list-group-item list-group-item-action">
             <div class="d-flex w-100 justify-content-between">
               <h5 class="mb-1">{{ user.personal_name }}</h5>
               <small>@{{ user.uname }}</small>
@@ -39,7 +39,7 @@
               <div class="card-body">
                 <h5 class="card-title">{{ board.name }}</h5>
                 <p class="card-text text-muted small">
-                  Created by @{{ board.uname }}<br>
+                  Created by <a href="{% url 'user_profile' board.uname %}">@{{ board.uname }}</a><br>
                   {{ board.created_at|date:"M d, Y" }}
                 </p>
                 <a href="{% url 'view_board' board.bid %}" 

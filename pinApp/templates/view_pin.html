@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% block title %}Pin #{{ pin.id }} - {{ pin.board.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    {% if messages %}
+    <div class="mb-4">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <div class="row">
+        <!-- Main Image Column -->
+        <div class="col-md-8">
+            <div class="card mb-4">
+                <img src="data:image/png;base64,{{ pin.img_data }}" 
+                     class="card-img-top" alt="Pin image">
+                <div class="card-body">
+                    <a href="{{ pin.src_url }}" target="_blank" class="small">
+                        Source: {{ pin.src_url|truncatechars:40 }}
+                    </a>
+                    <div class="mt-2">
+                        {% for tag in pin.tags %}
+                        <span class="badge bg-secondary me-1">{{ tag }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Interaction Column -->
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">{{ pin.author.name }}</h5>
+                    <p class="text-muted small">
+                        Pinned to 
+                        <a href="{% url 'view_board' pin.board.id %}">
+                            {{ pin.board.name }}
+                        </a>
+                        on {{ pin.created_at|date:"M d, Y" }}
+                    </p>
+                    
+                    <div class="d-flex align-items-center mb-3">
+                        <form method="POST" action="{% url 'like_pin' pin.id %}">
+                            {% csrf_token %}
+                            <button type="submit" 
+                                    class="btn btn-sm {% if pin.liked %}btn-danger{% else %}btn-outline-danger{% endif %}">
+                                ♥ {{ pin.like_count }}
+                            </button>
+                        </form>
+                    </div>
+
+                    <div class="comments-section">
+                        <h6>Comments</h6>
+                        {% if request.session.username %}
+                        <form method="POST" action="{% url 'post_comment' pin.id %}" class="mb-3">
+                            {% csrf_token %}
+                            <textarea name="content" 
+                                      class="form-control mb-2" 
+                                      placeholder="Add a comment..." 
+                                      required></textarea>
+                            <button type="submit" class="btn btn-primary btn-sm">
+                                Post Comment
+                            </button>
+                        </form>
+                        {% endif %}
+
+                        <div class="comments-list">
+                            {% for comment in comments %}
+                            <div class="card mb-2">
+                                <div class="card-body p-2">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <strong>{{ comment.personal_name }}</strong>
+                                            <p class="mb-0">{{ comment.content }}</p>
+                                            <small class="text-muted">
+                                                {{ comment.created_at|date:"M d, Y H:i" }}
+                                            </small>
+                                        </div>
+                                        {% if current_user == comment.uname or current_user == comment.board_owner %}
+                                        <form method="POST" action="{% url 'delete_comment' comment.cid %}">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-danger" 
+                                                    onclick="return confirm('Are you sure you want to delete this comment?')">
+                                                &times;
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% empty %}
+                            <p class="text-muted">No comments yet.</p>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

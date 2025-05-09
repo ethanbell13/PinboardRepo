@@ -311,7 +311,7 @@ def process_tags(tags_str, picid):
     with connection.cursor() as cursor:
         try:
             # Remove existing tags
-            cursor.execute("DELETE FROM PictureTag WHERE picid = %s", [picid])
+            cursor.execute("DELETE FROM picturetag WHERE picid = %s", [picid])
             
             # Insert new tags
             for tag in tags:
@@ -324,7 +324,7 @@ def process_tags(tags_str, picid):
                 
                 # Link tag to picture
                 cursor.execute("""
-                    INSERT INTO PictureTag (picid, tname)
+                    INSERT INTO picturetag (picid, tname)
                     VALUES (%s, %s)
                     ON CONFLICT (picid, tname) DO NOTHING
                 """, [picid, tag])
@@ -459,7 +459,7 @@ def edit_board_view(request, bid):
                        COALESCE(array_agg(t.tname), '{}'::varchar[]) as tags
                 FROM Pin p
                 JOIN Picture pic ON p.picid = pic.picid
-                LEFT JOIN PictureTag pt ON pic.picid = pt.picid
+                LEFT JOIN picturetag pt ON pic.picid = pt.picid
                 LEFT JOIN Tag t ON pt.tname = t.tname
                 WHERE p.bid = %s
                 GROUP BY p.pinid, pic.picid
@@ -526,12 +526,258 @@ def delete_pin_view(request, pinid):
     
     return redirect(request.META.get('HTTP_REFERER', 'dashboard'))
 
-# TODO edit tags
-# TODO view pinboards
+def board_view(request, bid):
+    try:
+        with connection.cursor() as cursor:
+            # Get board metadata
+            cursor.execute("""
+                SELECT b.name, u.personal_name, b.created_at
+                FROM board b
+                JOIN "User" u ON b.uname = u.uname
+                WHERE b.bid = %s
+            """, [bid])
+            
+            board_data = cursor.fetchone()
+            if not board_data:
+                return redirect('home')
+            
+            # Get all pins with basic info
+            cursor.execute("""
+                SELECT p.pinid, pic.img_data, pic.src_url,
+                       array_agg(t.tname) AS tags
+                FROM pin p
+                JOIN picture pic ON p.picid = pic.picid
+                LEFT JOIN picturetag pt ON pic.picid = pt.picid
+                LEFT JOIN tag t ON pt.tname = t.tname
+                WHERE p.bid = %s
+                GROUP BY p.pinid, pic.picid
+                ORDER BY p.created_at DESC
+            """, [bid])
+            
+            pins = []
+            for row in cursor.fetchall():
+                pins.append({
+                    'pinid': row[0],
+                    'img_data': base64.b64encode(row[1]).decode('utf-8'),
+                    'src_url': row[2],
+                    'tags': row[3] if row[3] else []
+                })
+            
+            context = {
+                'board': {
+                    'name': board_data[0],
+                    'owner': board_data[1],
+                    'created_at': board_data[2],
+                    'bid': bid
+                },
+                'pins': pins
+            }
+            
+            return render(request, 'view_board.html', context)
+            
+    except Exception as e:
+        print(f"View Board error: {str(e)}")
+        return redirect('dashboard')
+
+def pin_view(request, pinid):
+    try:
+        with connection.cursor() as cursor:
+            current_user = request.session.get('username', '')
+            
+            # Get pin details
+            cursor.execute("""
+                SELECT p.pinid, pic.img_data, pic.src_url, p.created_at,
+                       b.bid, b.name AS board_name, u.uname, u.personal_name,
+                       COUNT(l.org_pinid) AS like_count,
+                       array_agg(t.tname) AS tags,
+                       EXISTS(SELECT 1 FROM "Like" 
+                              WHERE org_pinid = p.pinid 
+                              AND uname = %s) AS liked
+                FROM pin p
+                JOIN picture pic ON p.picid = pic.picid
+                JOIN board b ON p.bid = b.bid
+                JOIN "User" u ON p.uname = u.uname
+                LEFT JOIN "Like" l ON p.pinid = l.org_pinid
+                LEFT JOIN picturetag pt ON pic.picid = pt.picid
+                LEFT JOIN tag t ON pt.tname = t.tname
+                WHERE p.pinid = %s
+                GROUP BY p.pinid, pic.picid, b.bid, u.uname
+            """, [current_user, pinid])
+            
+            pin_data = cursor.fetchone()
+            if not pin_data:
+                return redirect('dashboard')
+
+            # Get comments with ownership info
+            cursor.execute("""
+                SELECT c.cid, c.content, c.created_at, 
+                       u.personal_name, c.uname, b.uname as board_owner
+                FROM "Comment" c
+                JOIN "User" u ON c.uname = u.uname
+                JOIN pin p ON c.pinid = p.pinid
+                JOIN board b ON p.bid = b.bid
+                WHERE c.pinid = %s
+                ORDER BY c.created_at DESC
+            """, [pinid])
+            
+            columns = [col[0] for col in cursor.description]
+            comments = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            context = {
+                'pin': {
+                    'id': pin_data[0],
+                    'img_data': base64.b64encode(pin_data[1]).decode('utf-8'),
+                    'src_url': pin_data[2],
+                    'created_at': pin_data[3],
+                    'board': {
+                        'id': pin_data[4],
+                        'name': pin_data[5]
+                    },
+                    'author': {
+                        'username': pin_data[6],
+                        'name': pin_data[7]
+                    },
+                    'like_count': pin_data[8],
+                    'tags': pin_data[9] if pin_data[9] else [],
+                    'liked': pin_data[10]
+                },
+                'comments': comments,
+                'current_user': current_user
+            }
+            
+            return render(request, 'view_pin.html', context)
+            
+    except Exception as e:
+        messages.error(request, f"Error loading pin: {str(e)}")
+        return redirect('dashboard')
+
+def like_pin(request, pinid):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    try:
+        with connection.cursor() as cursor:
+            username = request.session['username']
+            cursor.execute("""
+                INSERT INTO "Like" (uname, org_pinid)
+                VALUES (%s, %s)
+                ON CONFLICT (uname, org_pinid) DO NOTHING
+            """, [username, pinid])
+            
+            if cursor.rowcount == 0:
+                cursor.execute("""
+                    DELETE FROM "Like" 
+                    WHERE uname = %s AND org_pinid = %s
+                """, [username, pinid])
+            
+            return redirect('view_pin', pinid=pinid)
+            
+    except Exception as e:
+        return redirect('view_pin', pinid=pinid)
+
+def comment_pin(request, pinid):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    if request.method == 'POST':
+        username = request.session['username']
+        content = request.POST.get('content', '').strip()
+        
+        if not content:
+            messages.error(request, "Comment cannot be empty")
+            return redirect('view_pin', pinid=pinid)
+        
+        try:
+            with connection.cursor() as cursor:
+                # Check comment permissions: owner can always comment
+                cursor.execute("""
+                    SELECT 1 FROM pin p
+                    JOIN board b ON p.bid = b.bid
+                    WHERE p.pinid = %s
+                    AND (
+                        p.uname = %s  -- Pin owner can always comment
+                        OR b.comment_perms = 'public'
+                        OR (
+                            b.comment_perms = 'friends'
+                            AND EXISTS(
+                                SELECT 1 FROM friend
+                                WHERE (uname1 = b.uname AND uname2 = %s)
+                                   OR (uname2 = b.uname AND uname1 = %s)
+                            )
+                        )
+                    )
+                """, [pinid, username, username, username])
+                
+                if not cursor.fetchone():
+                    messages.error(request, "You don't have permission to comment here")
+                    return redirect('view_pin', pinid=pinid)
+                
+                # Insert comment
+                cursor.execute("""
+                    INSERT INTO "Comment" (uname, pinid, content)
+                    VALUES (%s, %s, %s)
+                """, [username, pinid, content])
+                
+                messages.success(request, "Comment added successfully")
+                return redirect('view_pin', pinid=pinid)
+                
+        except Exception as e:
+            messages.error(request, f"Error posting comment: {str(e)}")
+            return redirect('view_pin', pinid=pinid)
+    
+    return redirect('view_pin', pinid=pinid)
+
+def delete_comment(request, cid):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    try:
+        with connection.cursor() as cursor:
+            #username = request.session['username']
+            
+            # Get comment ownership info
+            cursor.execute("""
+                SELECT c.uname, b.uname, c.pinid
+                FROM "Comment" c
+                JOIN pin p ON c.pinid = p.pinid
+                JOIN board b ON p.bid = b.bid
+                WHERE c.cid = %s
+            """, [cid])
+            
+            result = cursor.fetchone()
+            if not result:
+                messages.error(request, "Comment not found")
+            
+            comment_author, board_owner, pinid = result
+            current_user = request.session['username']
+            
+            # Check permissions
+            if current_user not in [comment_author, board_owner]:
+                messages.error(request, "Permission denied")
+            
+            # Delete comment
+            cursor.execute("""
+                DELETE FROM "Comment" 
+                WHERE cid = %s
+            """, [cid])
+            
+            messages.success(request, "Comment deleted successfully")
+            
+    except Exception as e:
+        messages.error(request, f"Error deleting comment: {str(e)}")
+    
+    return redirect('view_pin', pinid=pinid)
+
+
+# TODO Fix duplicate likes issue
+
+# TODO browse liked pins
 # TODO follow streams
 # TODO friend requests
 # TODO see friends list
 # TODO search for other users
 # TODO search for other pinboards
 # TODO board comments & likes
+# TODO implement repinning
+
 # TODO integrate models into the django admin panel

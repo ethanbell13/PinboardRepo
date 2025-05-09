@@ -8,7 +8,12 @@ from .views import (home_view,
                     create_board_view, 
                     edit_board_view, 
                     delete_board_view, 
-                    delete_pin_view,)
+                    delete_pin_view,
+                    board_view,
+                    pin_view,
+                    like_pin,
+                    comment_pin,
+                    delete_comment,)
 
 urlpatterns = [
     path('', home_view, name='home'),
@@ -18,7 +23,12 @@ urlpatterns = [
     path('dashboard/', dashboard_view, name='dashboard'),
     path('profile/edit/', edit_profile_view, name='edit_profile'),
     path('board/create/', create_board_view, name='create_board'),
-    path('board/<int:bid>/', edit_board_view, name='edit_board'),
+    path('board/edit/<int:bid>/', edit_board_view, name='edit_board'),
     path('board/<int:bid>/delete/', delete_board_view, name='delete_board'),
     path('pin/<int:pinid>/delete/', delete_pin_view, name='delete_pin'),
+    path('board/<int:bid>/', board_view, name='view_board'),
+    path('pin/<int:pinid>/', pin_view, name='view_pin'),
+    path('pin/<int:pinid>/like/', like_pin, name='like_pin'),
+    path('pin/<int:pinid>/comment/', comment_pin, name='post_comment'),
+    path('comment/<int:cid>/delete/', delete_comment, name='delete_comment'),
 ]

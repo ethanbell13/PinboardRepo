@@ -36,10 +36,15 @@
             </p>
           </div>
           <div class="card-footer bg-transparent">
-            <a href="{% url 'edit_board' board.bid %}" class="btn btn-sm btn-outline-primary">
-              Edit Board
-            </a>
-          </div>
+            <div class="d-flex justify-content-center gap-2">
+              <a href="{% url 'view_board' board.bid %}" class="btn btn-sm btn-outline-primary">
+                View Board
+              </a>
+              <a href="{% url 'edit_board' board.bid %}" class="btn btn-sm btn-outline-primary">
+                Edit Board
+              </a>
+            </div>
+          </div>          
         </div>
       </div>
       {% endfor %}

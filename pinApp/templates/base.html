@@ -46,12 +46,12 @@
       </div>
     </nav>
     
-    {% if messages %}
+    <!-- {% if messages %}
     <div class="container mt-4">
         <div class="row justify-content-center">
             <div class="col-md-8">
                 {% for message in messages %}
-                <div class="alert alert-dismissible fade show {% if message.tags %}{{ message.tags }}{% endif %}" role="alert">
+                <div class="alert alert-dismissible fade show alert-{% if message.tags %}{{ message.tags }}{% endif %}" role="alert">
                     {{ message }}
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
@@ -59,7 +59,7 @@
             </div>
         </div>
     </div>
-    {% endif %}
+    {% endif %} -->
 
     <!-- Main Content -->
     <div class="container mt-5">

@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}{{ stream.name }} - Pinboard{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h1>{{ stream.name }}</h1>
+                <p class="lead">
+                    Created by 
+                    <a href="{% url 'user_profile' stream.uname %}" class="text-decoration-none">
+                        {{ stream.owner }}
+                    </a> 
+                </p>
+            </div>
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <div class="d-flex flex-column gap-4">
+        {% for pin in pins %}
+        <div class="col">
+            <a href="{% url 'view_pin' pin.pinid %}" class="text-decoration-none">
+                <div class="card h-100">
+                    <img src="data:image/png;base64,{{ pin.img_data }}" 
+                         class="card-img-top" alt="Pin image">
+                    <div class="card-body">
+                        <div class="mb-2">
+                            {% for tag in pin.tags %}
+                            <span class="badge bg-secondary me-1">{{ tag }}</span>
+                            {% endfor %}
+                        </div>
+                        <small class="text-muted">Source: {{ pin.src_url|truncatechars:30 }}</small>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% empty %}
+        <div class="alert alert-info">No pins in this board yet.</div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

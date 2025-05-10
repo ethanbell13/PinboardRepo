@@ -305,6 +305,42 @@ def create_board_view(request):
     # GET request - show empty form
     return render(request, 'create_board.html')
 
+def create_stream_view(request):
+    if 'username' not in request.session:
+        return redirect('login')
+    
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        username = request.session['username']
+        
+        # Validation
+        errors = []
+        if not name:
+            errors.append('Stream name is required')
+        if errors:
+            return render(request, 'create_stream.html', {'error': ' '.join(errors)})
+        
+        try:
+            with connection.cursor() as cursor:
+                # Insert new stream
+                cursor.execute("""
+                    INSERT INTO FollowStream (uname, stream_name)
+                    VALUES (%s, %s)
+                    RETURNING sid
+                """, [username, name])                
+                # sid = cursor.fetchone()[0]
+                
+            messages.success(request, 'Stream created successfully!')
+            return redirect('dashboard')
+            
+        except Exception as e:
+            # Handle database errors
+            print("Stream Create error:", str(e))
+            return render(request, 'create_stream.html', {'error': f'Error creating board: {str(e)}'})
+    
+    # GET request - show empty form
+    return render(request, 'create_stream.html')
+
 def process_tags(tags_str, picid):
     """Update tags for a specific picture"""
     tags = [tag.strip().lower() for tag in tags_str.split(',') if tag.strip()]
@@ -580,6 +616,62 @@ def board_view(request, bid):
             
     except Exception as e:
         print(f"View Board error: {str(e)}")
+        return redirect('dashboard')
+
+def stream_view(request, sid):
+    try:
+        with connection.cursor() as cursor:
+            # Get board metadata
+            cursor.execute("""
+                SELECT s.sid, s.uname, s.stream_name,  
+                FROM FollowStream s
+                JOIN "User" u ON s.uname = u.uname
+                WHERE s.bid = %s
+            """, [sid])
+            
+            stream_data = cursor.fetchone()
+            if not stream_data:
+                return redirect('home')
+            
+            # Get all pins with basic info
+            cursor.execute("""
+                select p.pinid, pic.img_data, pic.src_url,                
+                        array_agg(t.tname) as tags
+                from FollowStream join Follow on FollowStream.sid = Follow.sid as A
+                join Pin p A.bid = p.bid
+                join picture pic on p.picid = pic.picid
+                left join picturetag pt on pic.pid = pt.picid
+                left join tag t on pt.tname = t.tname 
+                where FollowStream.sid = %s
+                group by p.pinid, pic.img_data, pic.src_url
+                order by Pin.created\_at desc;
+            """, [sid])
+
+            pins = []
+            for row in cursor.fetchall():
+                pins.append({
+                    'pinid': row[0],
+                    'img_data': base64.b64encode(row[1]).decode('utf-8'),
+                    'src_url': row[2],
+                    'tags': row[3] if row[3] else []
+                })
+            
+            context = {
+                'stream': {
+                    'name': stream_data[0],
+                    'owner': stream_data[1],
+                    'created_at': stream_data[2],
+                    'sid': sid,
+                    'uname': stream_data[3],
+                    'owner': stream_data[4]
+                },
+                'pins': pins
+            }
+            
+            return render(request, 'view_stream.html', context)
+            
+    except Exception as e:
+        print(f"View Stream error: {str(e)}")
         return redirect('dashboard')
 
 def pin_view(request, pinid):

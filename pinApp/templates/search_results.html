@@ -1,4 +1,3 @@
-<!-- search_results.html -->
 {% extends 'base.html' %}
 
 {% block title %}Search Results{% endblock %}
@@ -9,7 +8,7 @@
 
   <div class="row">
     <!-- Users Results -->
-    <div class="col-md-6">
+    <div class="col-md-4">
       <h4 class="mb-3">Users</h4>
       {% if users %}
         <div class="list-group">
@@ -29,7 +28,7 @@
     </div>
 
     <!-- Boards Results -->
-    <div class="col-md-6">
+    <div class="col-md-4">
       <h4 class="mb-3">Boards</h4>
       {% if boards %}
         <div class="row row-cols-1 g-3">
@@ -53,6 +52,44 @@
         </div>
       {% else %}
         <div class="alert alert-info">No boards found</div>
+      {% endif %}
+    </div>
+
+    <!-- Pins Results -->
+    <div class="col-md-4">
+      <h4 class="mb-3">Pins</h4>
+      {% if pins %}
+        <div class="row row-cols-1 g-3">
+          {% for pin in pins %}
+          <div class="col">
+            <div class="card h-100">
+              {% if pin.img_base64 %}
+              <img src="data:image/png;base64,{{ pin.img_base64 }}" 
+                   class="card-img-top" 
+                   alt="Pin image"
+                   style="height: 200px; object-fit: cover;">
+              {% endif %}
+              <div class="card-body">
+                <div class="mb-2">
+                  {% for tag in pin.tags %}
+                  <span class="badge bg-secondary me-1">{{ tag }}</span>
+                  {% endfor %}
+                </div>
+                <p class="card-text text-muted small">
+                  In board: <a href="{% url 'view_board' pin.bid %}">{{ pin.board_name }}</a><br>
+                  By <a href="{% url 'user_profile' pin.uname %}">{{ pin.personal_name }}</a>
+                </p>
+                <a href="{% url 'view_pin' pin.pinid %}" 
+                   class="btn btn-sm btn-outline-primary">
+                  View Pin
+                </a>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="alert alert-info">No pins found</div>
       {% endif %}
     </div>
   </div>

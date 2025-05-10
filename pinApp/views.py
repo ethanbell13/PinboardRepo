@@ -797,7 +797,7 @@ def search_view(request):
             with connection.cursor() as cursor:
                 cursor.execute("""
                     SELECT bid, name, created_at, uname 
-                    FROM board 
+                    FROM Board 
                     WHERE name ILIKE %s
                     ORDER BY created_at DESC
                     LIMIT 12
@@ -806,6 +806,37 @@ def search_view(request):
                     dict(zip([col[0] for col in cursor.description], row))
                     for row in cursor.fetchall()
                 ]
+
+            # Search Pins by Tag
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT DISTINCT p.pinid, pic.src_url, pic.img_data,
+                           b.bid, b.name AS board_name,
+                           u.uname, u.personal_name,
+                           ARRAY_AGG(t.tname) AS tags
+                    FROM Tag t
+                    JOIN PictureTag pt ON t.tname = pt.tname
+                    JOIN Picture pic ON pt.picid = pic.picid
+                    JOIN Pin p ON pic.picid = p.picid
+                    JOIN Board b ON p.bid = b.bid
+                    JOIN "User" u ON b.uname = u.uname
+                    WHERE t.tname ILIKE %s
+                    GROUP BY p.pinid, pic.src_url, pic.img_data,
+                             b.bid, b.name, u.uname, u.personal_name
+                    LIMIT 12
+                """, [f'%{query}%'])
+                
+                pins = []
+                columns = [col[0] for col in cursor.description]
+                for row in cursor.fetchall():
+                    pin_data = dict(zip(columns, row))
+                    # Convert BYTEA to base64
+                    if pin_data['img_data']:
+                        pin_data['img_base64'] = base64.b64encode(
+                            pin_data['img_data']
+                        ).decode('utf-8')
+                    pins.append(pin_data)
+                context['pins'] = pins
 
         except Exception as e:
             messages.error(request, f"Search error: {str(e)}")

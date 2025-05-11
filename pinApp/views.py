@@ -1315,9 +1315,8 @@ def remove_follow(request, sid, bid):
     return redirect('edit_stream', sid=sid)
 
 
-# TODO Fix duplicate likes issue (also duplicates tags)
 
-# TODO follow streams
 # TODO implement repinning
 
+# We  probably don't need to integrate the models, so long as we except that our machines have different data and pick one to present on
 # TODO integrate models into the django admin panel

@@ -4,7 +4,7 @@
 {% block content %}
 <div class="container mt-4">
     <div class="mb-4">
-        <div class="d-flex justify-content-between align-items-start">
+        <div class="d-flex justify-content-between align-items-start flex-wrap">
             <div>
                 <h1>{{ board.name }}</h1>
                 <p class="lead">
@@ -15,9 +15,14 @@
                     on {{ board.created_at|date:"M d, Y" }}
                 </p>
             </div>
-            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Dashboard
-            </a>
+            <div class="d-flex gap-2 mt-2">
+                <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+                <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#followModal">
+                    <i class="bi bi-plus-circle"></i> Follow
+                </button>
+            </div>
         </div>
     </div>
 
@@ -46,4 +51,40 @@
         {% endfor %}
     </div>
 </div>
+
+<!-- Follow Modal -->
+<div class="modal fade" id="followModal" tabindex="-1" aria-labelledby="followModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <form method="post" action="{% url 'follow_board' board.bid %}">
+        {% csrf_token %}
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="followModalLabel">Add Board to a Stream</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            {% if streams %}
+              <div class="mb-3">
+                <label for="streamSelect" class="form-label">Select a stream:</label>
+                <select class="form-select" id="streamSelect" name="stream_id" required>
+                  {% for stream in streams %}
+                    <option value="{{ stream.sid }}">{{ stream.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            {% else %}
+              <div class="alert alert-info">
+                You don’t have any streams yet. Go to your dashboard to create one.
+              </div>
+            {% endif %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Add to Stream</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
 {% endblock %}

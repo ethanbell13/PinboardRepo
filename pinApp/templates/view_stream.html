@@ -6,20 +6,23 @@
     <div class="mb-4">
         <div class="d-flex justify-content-between align-items-start">
             <div>
-                <h1>{{ stream.name }}</h1>
+                <h1>{{ stream.stream_name }}</h1>
                 <p class="lead">
                     Created by 
                     <a href="{% url 'user_profile' stream.uname %}" class="text-decoration-none">
                         {{ stream.owner }}
                     </a> 
                 </p>
-            </div>
-            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </div class="d-flex gap-2 mt-2">
+                <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+                <a href="{% url 'edit_stream' stream.sid %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-pencil-square"></i> Edit Stream
             </a>
         </div>
     </div>
-
+    
     <div class="d-flex flex-column gap-4">
         {% for pin in pins %}
         <div class="col">

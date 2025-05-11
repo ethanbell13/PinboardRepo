@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Edit Stream - Pinboard{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Edit Stream</h1>
+        <a href="{% url 'view_stream' sid %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Stream
+        </a>
+    </div>
+
+    <!-- Rename Stream Form -->
+    <form method="post" action="{% url 'edit_stream' sid %}" class="mb-5">
+        {% csrf_token %}
+        <div class="input-group">
+            <input type="text" name="stream_name" class="form-control"
+                   value="{{ stream_name }}" required>
+            <button type="submit" class="btn btn-primary">Rename Stream</button>
+        </div>
+    </form>
+
+    <!-- Boards Section -->
+    <h4>Boards in this Stream</h4>
+    {% if boards %}
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for board in boards %}
+        <div class="col">
+            <div class="card position-relative h-100">
+                <!-- Remove Button ("X") -->
+                <a href="{% url 'remove_follow' sid board.bid %}"
+                   class="position-absolute top-0 end-0 m-2 text-danger"
+                   title="Remove Board"
+                   style="font-size: 1.25rem; z-index: 1;">
+                   &times;
+                </a>
+
+                <div class="card-body">
+                    <h5 class="card-title">{{ board.name }}</h5>
+                    <p class="card-text text-muted small">
+                        Created {{ board.created_at|date:"M d, Y" }}<br>
+                        Comments: {{ board.comment_perms }}
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info mt-3">
+        This stream doesn't follow any boards yet.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

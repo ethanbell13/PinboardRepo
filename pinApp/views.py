@@ -258,7 +258,23 @@ def dashboard_view(request):
             columns = [col[0] for col in cursor.description]
             boards = [dict(zip(columns, row)) for row in cursor.fetchall()]
         context['boards'] = boards
-        print("Raw DB results: ", boards)
+        print("Raw Board DB results: ", boards)
+
+        # Get user's streams
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select sid, stream_name, created_at
+                from followstream
+                where uname = %s
+                order by created_at desc
+                limit 8
+                """, [username]
+            )
+            columns = [col[0] for col in cursor.description]
+            streams = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        context['streams'] = streams
+        print("Raw Stream DB results: ", streams)
 
     except Exception as e:
         messages.error(request, f"Error loading dashboard: {str(e)}")
@@ -599,7 +615,17 @@ def board_view(request, bid):
                     'src_url': row[2],
                     'tags': row[3] if row[3] else []
                 })
-            
+            # Get current user's streams
+            uname = request.session.get("username")
+            cursor.execute("""
+                SELECT sid, stream_name
+                FROM followstream
+                WHERE uname = %s
+                ORDER BY created_at DESC
+            """, [uname])
+
+            streams = [{'sid': row[0], 'name': row[1]} for row in cursor.fetchall()]
+
             context = {
                 'board': {
                     'name': board_data[0],
@@ -609,7 +635,8 @@ def board_view(request, bid):
                     'uname': board_data[3],
                     'owner': board_data[4]
                 },
-                'pins': pins
+                'pins': pins,
+                'streams' : streams
             }
             
             return render(request, 'view_board.html', context)
@@ -623,10 +650,10 @@ def stream_view(request, sid):
         with connection.cursor() as cursor:
             # Get board metadata
             cursor.execute("""
-                SELECT s.sid, s.uname, s.stream_name,  
+                SELECT s.sid, s.uname, s.stream_name, s.created_at, u.personal_name  
                 FROM FollowStream s
                 JOIN "User" u ON s.uname = u.uname
-                WHERE s.bid = %s
+                WHERE s.sid = %s
             """, [sid])
             
             stream_data = cursor.fetchone()
@@ -634,36 +661,42 @@ def stream_view(request, sid):
                 return redirect('home')
             
             # Get all pins with basic info
-            cursor.execute("""
-                select p.pinid, pic.img_data, pic.src_url,                
-                        array_agg(t.tname) as tags
-                from FollowStream join Follow on FollowStream.sid = Follow.sid as A
-                join Pin p A.bid = p.bid
-                join picture pic on p.picid = pic.picid
-                left join picturetag pt on pic.pid = pt.picid
-                left join tag t on pt.tname = t.tname 
-                where FollowStream.sid = %s
-                group by p.pinid, pic.img_data, pic.src_url
-                order by Pin.created\_at desc;
-            """, [sid])
-
+            try:
+                cursor.execute("""
+                    select p.pinid, pic.img_data, pic.src_url,                
+                            array_agg(t.tname) as tags
+                    from FollowStream s join Follow f on s.sid = f.sid
+                    join Pin p on f.bid = p.bid
+                    join picture pic on p.picid = pic.picid
+                    left join picturetag pt on pic.picid = pt.picid
+                    left join tag t on pt.tname = t.tname 
+                    where s.sid = %s
+                    group by p.pinid, pic.img_data, pic.src_url
+                    order by p.created_at desc;
+                """, [sid])
+            except Exception as e:
+                print("Pin query failed in stream_view(request, sid)")
+            rows = cursor.fetchall()
             pins = []
-            for row in cursor.fetchall():
+            for row in rows:
+                pinid = row[0]
+                img_data = base64.b64encode(bytes(row[1])).decode('utf-8')
+                src_url = row[2]
+                tags = row[3] if row[3] else []
+
                 pins.append({
-                    'pinid': row[0],
-                    'img_data': base64.b64encode(row[1]).decode('utf-8'),
-                    'src_url': row[2],
-                    'tags': row[3] if row[3] else []
+                    'pinid': pinid,
+                    'img_data': img_data,
+                    'src_url': src_url,
+                    'tags': tags
                 })
-            
             context = {
                 'stream': {
-                    'name': stream_data[0],
+                    'sid': stream_data[0],
                     'owner': stream_data[1],
-                    'created_at': stream_data[2],
-                    'sid': sid,
-                    'uname': stream_data[3],
-                    'owner': stream_data[4]
+                    'stream_name': stream_data[2],
+                    'created_at': stream_data[3],
+                    'uname': stream_data[4]
                 },
                 'pins': pins
             }
@@ -683,7 +716,6 @@ def pin_view(request, pinid):
             cursor.execute("""
                 SELECT p.pinid, pic.img_data, pic.src_url, p.created_at,
                        b.bid, b.name AS board_name, u.uname, u.personal_name,
-                       COUNT(l.org_pinid) AS like_count,
                        array_agg(t.tname) AS tags,
                        EXISTS(SELECT 1 FROM "Like" 
                               WHERE org_pinid = p.pinid 
@@ -696,7 +728,7 @@ def pin_view(request, pinid):
                 LEFT JOIN picturetag pt ON pic.picid = pt.picid
                 LEFT JOIN tag t ON pt.tname = t.tname
                 WHERE p.pinid = %s
-                GROUP BY p.pinid, pic.picid, b.bid, u.uname
+                GROUP BY p.pinid, pic.picid, b.bid, u.uname, u.personal_name, b.name, p.created_at, pic.src_url
             """, [current_user, pinid])
             
             pin_data = cursor.fetchone()
@@ -718,6 +750,20 @@ def pin_view(request, pinid):
             columns = [col[0] for col in cursor.description]
             comments = [dict(zip(columns, row)) for row in cursor.fetchall()]
             
+            # Get like count
+            cursor.execute(
+                """
+                with original(org_pinid) as
+                (
+                    select org_pinid
+                    from pin join picture on pin.picid = picture.picid
+                    where pinid = %s
+                )
+                select count(org_pinid)
+                from "Like" natural join original;
+                """, [pinid])
+            likes = cursor.fetchone()[0]
+
             context = {
                 'pin': {
                     'id': pin_data[0],
@@ -732,9 +778,9 @@ def pin_view(request, pinid):
                         'username': pin_data[6],
                         'name': pin_data[7]
                     },
-                    'like_count': pin_data[8],
-                    'tags': pin_data[9] if pin_data[9] else [],
-                    'liked': pin_data[10]
+                    'like_count': likes,
+                    'tags': pin_data[8] if pin_data[9] else [],
+                    'liked': pin_data[9]
                 },
                 'comments': comments,
                 'current_user': current_user
@@ -1165,6 +1211,109 @@ def liked_pins_view(request):
         return redirect('dashboard')
 
     return render(request, 'liked_pins.html', context)
+
+def follow_board(request, bid):
+    if request.method != "POST":
+        return redirect('view_board', bid=bid)
+
+    sid = request.POST.get('stream_id')
+
+    try:
+        with connection.cursor() as cursor:
+            # Check if the stream exists and belongs to the user
+            cursor.execute("""
+                select sid 
+                from followstream
+                WHERE sid = %s
+            """, [sid])
+            if cursor.fetchone() is None:
+                messages.error(request, "Invalid stream selection.")
+                return redirect('view_board', bid=bid)
+
+            # Optional: check if board already added
+            cursor.execute("""
+                select sid 
+                from follow
+                WHERE sid = %s AND bid = %s
+            """, [sid, bid])
+            if cursor.fetchone():
+                messages.info(request, "This board is already in the selected stream.")
+                return redirect('view_board', bid=bid)
+
+            # Insert board into stream
+            cursor.execute("""
+                insert into follow (sid, bid)
+                VALUES (%s, %s)
+            """, [sid, bid])
+
+            messages.success(request, "Board added to stream successfully.")
+
+    except Exception as e:
+        print("Error in follow_board:", e)
+        messages.error(request, "An error occurred while adding the board to the stream.")
+
+    return redirect('view_board', bid=bid)
+
+def edit_stream_view(request, sid):
+    try:
+        with connection.cursor() as cursor:
+            # Fetch stream details
+            cursor.execute("""
+                select stream_name
+                from followstream
+                where sid = %s AND uname = %s
+            """, [sid, request.session.get('username')])
+            row = cursor.fetchone()
+            if not row:
+                return redirect('dashboard')
+            stream_name = row[0]
+
+            # Update name if form submitted
+            if request.method == "POST":
+                new_name = request.POST.get("stream_name")
+                cursor.execute("""
+                    update followstream
+                    set stream_name = %s
+                    where sid = %s AND uname = %s
+                """, [new_name, sid, request.session.get('username')])
+                messages.success(request, "Stream name updated.")
+                return redirect('edit_stream', sid=sid)
+
+            # Fetch followed boards
+            cursor.execute("""
+                select b.bid, b.name, b.comment_perms, b.created_at
+                from follow f
+                join board b on f.bid = b.bid
+                where f.sid = %s
+            """, [sid])
+            boards = [
+                {'bid': row[0], 'name': row[1], 'comment_perms': row[2], 'created_at': row[3]}
+                for row in cursor.fetchall()
+            ]
+
+        context = {
+            'stream_name': stream_name,
+            'sid': sid,
+            'boards': boards
+        }
+        return render(request, 'edit_stream.html', context)
+
+    except Exception as e:
+        print("Edit stream error:", e)
+        return redirect('dashboard')
+    
+def remove_follow(request, sid, bid):
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                delete FROM follow
+                where sid = %s and bid = %s
+            """, [sid, bid])
+            messages.success(request, "Board removed from stream.")
+    except Exception as e:
+        print("Remove board error:", e)
+    return redirect('edit_stream', sid=sid)
+
 
 # TODO Fix duplicate likes issue (also duplicates tags)
 

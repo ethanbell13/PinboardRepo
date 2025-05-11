@@ -71,7 +71,7 @@
     <div class="col">
       <div class="card h-100">
         <div class="card-body">
-          <h5 class="card-title">{{ stream.name }}</h5>
+          <h5 class="card-title">{{ stream.stream_name }}</h5>
           <p class="card-text text-muted small mb-1">
             Created {{ stream.created_at|date:"M d, Y" }}
           </p>
@@ -84,7 +84,7 @@
         <div class="card-footer bg-transparent">
           <div class="d-flex justify-content-center gap-2">
             <a href="{% url 'view_stream' stream.sid %}" class="btn btn-sm btn-outline-primary">View Stream</a>
-            <!-- <a href="{% url 'edit_stream' stream.sid %}" class="btn btn-sm btn-outline-secondary">Edit Stream</a> -->
+            {% comment %} <a href="{% url 'edit_stream' stream.sid %}" class="btn btn-sm btn-outline-secondary">Edit Stream</a> {% endcomment %}
           </div>
         </div>
       </div>

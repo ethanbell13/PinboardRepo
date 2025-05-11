@@ -20,7 +20,11 @@ from .views import (home_view,
                     user_profile_view,
                     send_friend_request,
                     handle_friend_request,
-                    liked_pins_view)
+                    liked_pins_view,
+                    follow_board,
+                    edit_stream_view,
+                    remove_follow,
+                    )
 
 urlpatterns = [
     path('', home_view, name='home'),
@@ -35,7 +39,7 @@ urlpatterns = [
     path('board/<int:bid>/delete/', delete_board_view, name='delete_board'),
     path('pin/<int:pinid>/delete/', delete_pin_view, name='delete_pin'),
     path('board/<int:bid>/', board_view, name='view_board'),
-    path('stream/<int:sid>/', stream_view, name='stream_board'),
+    path('stream/<int:sid>/', stream_view, name='view_stream'),
     path('pin/<int:pinid>/', pin_view, name='view_pin'),
     path('pin/<int:pinid>/like/', like_pin, name='like_pin'),
     path('pin/<int:pinid>/comment/', comment_pin, name='post_comment'),
@@ -45,4 +49,7 @@ urlpatterns = [
     path('friend_request/<str:username>/', send_friend_request, name='send_friend_request'),
     path('friend_request/<str:username>/<str:action>/', handle_friend_request, name='handle_friend_request'),
     path('liked-pins/', liked_pins_view, name='liked_pins'),
+    path('board/<int:bid>/follow/', follow_board, name='follow_board'),
+    path('stream/<int:sid>/edit/', edit_stream_view, name='edit_stream'),
+    path('stream/<int:sid>/remove_board/<int:bid>/', remove_follow, name='remove_follow'),
 ]

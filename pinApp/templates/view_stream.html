@@ -29,7 +29,9 @@
             <a href="{% url 'view_pin' pin.pinid %}" class="text-decoration-none">
                 <div class="card h-100">
                     <img src="data:image/png;base64,{{ pin.img_data }}" 
-                         class="card-img-top" alt="Pin image">
+                        class="card-img-top img-fluid" 
+                        style="max-height: 200px; width: auto; object-fit: contain"
+                        alt="Pin image">
                     <div class="card-body">
                         <div class="mb-2">
                             {% for tag in pin.tags %}

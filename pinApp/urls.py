@@ -24,6 +24,7 @@ from .views import (home_view,
                     follow_board,
                     edit_stream_view,
                     remove_follow,
+                    repin_picture,
                     )
 
 urlpatterns = [
@@ -52,4 +53,4 @@ urlpatterns = [
     path('board/<int:bid>/follow/', follow_board, name='follow_board'),
     path('stream/<int:sid>/edit/', edit_stream_view, name='edit_stream'),
     path('stream/<int:sid>/remove_board/<int:bid>/', remove_follow, name='remove_follow'),
-]
+    path('pin/<int:pinid>/repin', repin_picture, name='repin_picture'),]

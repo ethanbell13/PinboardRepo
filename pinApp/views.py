@@ -258,7 +258,6 @@ def dashboard_view(request):
             columns = [col[0] for col in cursor.description]
             boards = [dict(zip(columns, row)) for row in cursor.fetchall()]
         context['boards'] = boards
-        print("Raw Board DB results: ", boards)
 
         # Get user's streams
         with connection.cursor() as cursor:
@@ -274,7 +273,6 @@ def dashboard_view(request):
             columns = [col[0] for col in cursor.description]
             streams = [dict(zip(columns, row)) for row in cursor.fetchall()]
         context['streams'] = streams
-        print("Raw Stream DB results: ", streams)
 
     except Exception as e:
         messages.error(request, f"Error loading dashboard: {str(e)}")
@@ -708,6 +706,7 @@ def stream_view(request, sid):
         return redirect('dashboard')
 
 def pin_view(request, pinid):
+    print("In pinv_view\n")
     try:
         with connection.cursor() as cursor:
             current_user = request.session.get('username', '')
@@ -733,6 +732,7 @@ def pin_view(request, pinid):
             
             pin_data = cursor.fetchone()
             if not pin_data:
+                print("Failed to get pindata, returned to dashboard.\n")
                 return redirect('dashboard')
 
             # Get comments with ownership info
@@ -764,6 +764,40 @@ def pin_view(request, pinid):
                 """, [pinid])
             likes = cursor.fetchone()[0]
 
+            #get picid
+            cursor.execute(
+                """
+                select picid
+                from Pin
+                where pinid = %s
+                """, [pinid]
+            )
+            picid = cursor.fetchone()[0]
+
+            #get user's boards that don't have the picture
+            cursor.execute(
+                """
+                with matching_boards(bid) as
+                (
+                    select distinct b.bid
+                    from board b join pin p
+                    on b.bid = p.bid and b.uname = p.uname
+                    where p.picid = %s
+                ),
+                other_boards(bid) as
+                (
+                    select bid
+                    from board
+                    except
+                    select bid
+                    from matching_boards
+                )
+                select ob.bid, name
+                from other_boards ob join board b on ob.bid = b.bid
+                where uname = %s 
+                """, [picid, current_user]
+            )
+            boards = [{'bid' : row[0], 'board_name': row[1]} for row in cursor.fetchall()]
             context = {
                 'pin': {
                     'id': pin_data[0],
@@ -783,12 +817,14 @@ def pin_view(request, pinid):
                     'liked': pin_data[9]
                 },
                 'comments': comments,
-                'current_user': current_user
+                'current_user': current_user,
+                'picid': picid,
+                'boards': boards,
             }
-            
             return render(request, 'view_pin.html', context)
             
     except Exception as e:
+        print("Error loading pin: %s.\n", e)
         messages.error(request, f"Error loading pin: {str(e)}")
         return redirect('dashboard')
 
@@ -1220,7 +1256,7 @@ def follow_board(request, bid):
 
     try:
         with connection.cursor() as cursor:
-            # Check if the stream exists and belongs to the user
+            # Check if the stream exists
             cursor.execute("""
                 select sid 
                 from followstream
@@ -1249,7 +1285,7 @@ def follow_board(request, bid):
             messages.success(request, "Board added to stream successfully.")
 
     except Exception as e:
-        print("Error in follow_board:", e)
+        print("Error in follow_board: ", e)
         messages.error(request, "An error occurred while adding the board to the stream.")
 
     return redirect('view_board', bid=bid)
@@ -1314,9 +1350,40 @@ def remove_follow(request, sid, bid):
         print("Remove board error:", e)
     return redirect('edit_stream', sid=sid)
 
+def repin_picture(request, pinid):
+    print("In repin_picture")
+    if request.method != "POST":
+        return redirect('view_pin', pinid=pinid)
+    print("In repin_picture POST")
+    picid = request.POST.get('picid')
+    bid = request.POST.get('board_id')
+    uname = request.session.get("username")
 
+    try:
+        with connection.cursor() as cursor:
 
-# TODO implement repinning
+            #check if the board exists and belongs to the user
+            cursor.execute("""
+                select bid
+                from board
+                where bid = %s and uname = %s
+                """, [bid, uname])
+            if cursor.fetchone() is None:
+                messages.error(request, "Invalid board selection.")
+                return redirect('view_pin', picid=picid, pinid=pinid)
+
+            #add picture to board
+            cursor.execute("""
+                insert into pin(uname, bid, picid)
+                values(%s, %s, %s)           
+                """, [uname, bid, picid])
+            if cursor.rowcount != 1:
+                print("Repin unsucessful at insert.")
+            messages.success(request, "Pin added to board.")
+    except Exception as e:
+        print("Error in repin_picture: ", e)
+    
+    return redirect('view_pin', pinid=pinid)
 
 # We  probably don't need to integrate the models, so long as we except that our machines have different data and pick one to present on
 # TODO integrate models into the django admin panel

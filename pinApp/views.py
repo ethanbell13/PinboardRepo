@@ -1384,6 +1384,3 @@ def repin_picture(request, pinid):
         print("Error in repin_picture: ", e)
     
     return redirect('view_pin', pinid=pinid)
-
-# We  probably don't need to integrate the models, so long as we except that our machines have different data and pick one to present on
-# TODO integrate models into the django admin panel

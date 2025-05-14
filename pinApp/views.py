@@ -706,31 +706,58 @@ def stream_view(request, sid):
         return redirect('dashboard')
 
 def pin_view(request, pinid):
-    print("In pinv_view\n")
     try:
         with connection.cursor() as cursor:
             current_user = request.session.get('username', '')
             
             # Get pin details
             cursor.execute("""
-                SELECT p.pinid, pic.img_data, pic.src_url, p.created_at,
-                       b.bid, b.name AS board_name, u.uname, u.personal_name,
-                       array_agg(t.tname) AS tags,
-                       EXISTS(SELECT 1 FROM "Like" 
-                              WHERE org_pinid = p.pinid 
-                              AND uname = %s) AS liked
-                FROM pin p
-                JOIN picture pic ON p.picid = pic.picid
-                JOIN board b ON p.bid = b.bid
-                JOIN "User" u ON p.uname = u.uname
-                LEFT JOIN "Like" l ON p.pinid = l.org_pinid
-                LEFT JOIN picturetag pt ON pic.picid = pt.picid
-                LEFT JOIN tag t ON pt.tname = t.tname
-                WHERE p.pinid = %s
-                GROUP BY p.pinid, pic.picid, b.bid, u.uname, u.personal_name, b.name, p.created_at, pic.src_url
-            """, [current_user, pinid])
-            
+                select *
+                from pin
+                where pinid = %s       
+                """, [pinid])
             pin_data = cursor.fetchone()
+
+            # Get pic details
+            cursor.execute("""
+                select *
+                from picture
+                where picid = %s
+                """, [pin_data[3]])
+            pic_data = cursor.fetchone()
+
+            # Get board details
+            cursor.execute("""
+                select b.bid, b.name
+                from board b join pin p
+                on p.bid = b.bid
+                where p.pinid = %s
+                """, [pinid])
+            board_data = cursor.fetchone()
+
+            #get user info
+            cursor.execute("""
+                    select u.uname, u.personal_name
+                    from "User" u join board b
+                    on u.uname = b.uname
+                    where b.bid = %s
+                    """, [board_data[0]])
+            user_data = cursor.fetchone()
+            # Get tags
+            cursor.execute("""
+                select tname
+                from picturetag
+                where picid = %s
+                """, [pic_data[0]])
+            tags = [row[0] for row in cursor.fetchall()]
+
+            # get like count
+            cursor.execute("""
+                select coalesce(count(uname), 0)
+                from "Like"
+                where picid = %s
+                """, [pic_data[0]])
+            like_count = cursor.fetchone()[0]
             if not pin_data:
                 print("Failed to get pindata, returned to dashboard.\n")
                 return redirect('dashboard')
@@ -746,34 +773,16 @@ def pin_view(request, pinid):
                 WHERE c.pinid = %s
                 ORDER BY c.created_at DESC
             """, [pinid])
-            
             columns = [col[0] for col in cursor.description]
             comments = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            
-            # Get like count
-            cursor.execute(
-                """
-                with original(org_pinid) as
-                (
-                    select org_pinid
-                    from pin join picture on pin.picid = picture.picid
-                    where pinid = %s
-                )
-                select count(org_pinid)
-                from "Like" natural join original;
-                """, [pinid])
-            likes = cursor.fetchone()[0]
-
-            #get picid
-            cursor.execute(
-                """
-                select picid
-                from Pin
-                where pinid = %s
-                """, [pinid]
-            )
-            picid = cursor.fetchone()[0]
-
+            # Check if user has already like this picture
+            cursor.execute("""
+                select exists(
+                    select *
+                    from "Like"
+                    where picid = %s and uname = %s)
+                """, [pic_data[0], user_data[0]])
+            liked = cursor.fetchone()[0]
             #get user's boards that don't have the picture
             cursor.execute(
                 """
@@ -795,32 +804,34 @@ def pin_view(request, pinid):
                 select ob.bid, name
                 from other_boards ob join board b on ob.bid = b.bid
                 where uname = %s 
-                """, [picid, current_user]
+                """, [pic_data[0], current_user]
             )
             boards = [{'bid' : row[0], 'board_name': row[1]} for row in cursor.fetchall()]
+            print("Before context")
             context = {
                 'pin': {
                     'id': pin_data[0],
-                    'img_data': base64.b64encode(pin_data[1]).decode('utf-8'),
-                    'src_url': pin_data[2],
-                    'created_at': pin_data[3],
+                    'img_data': base64.b64encode(pic_data[2]).decode('utf-8'),
+                    'src_url': pic_data[3],
+                    'created_at': pin_data[4],
                     'board': {
-                        'id': pin_data[4],
-                        'name': pin_data[5]
+                        'id': board_data[0],
+                        'name': board_data[1]
                     },
                     'author': {
-                        'username': pin_data[6],
-                        'name': pin_data[7]
+                        'username': user_data[0],
+                        'name': user_data[1]
                     },
-                    'like_count': likes,
-                    'tags': pin_data[8] if pin_data[9] else [],
-                    'liked': pin_data[9]
+                    'like_count': like_count,
+                    'tags': tags,
+                    'liked': liked
                 },
                 'comments': comments,
                 'current_user': current_user,
-                'picid': picid,
+                'picid': pic_data[0],
                 'boards': boards,
             }
+            print("After context")
             return render(request, 'view_pin.html', context)
             
     except Exception as e:
@@ -832,20 +843,21 @@ def like_pin(request, pinid):
     if 'username' not in request.session:
         return redirect('login')
     
-    try:
+    try:        
         with connection.cursor() as cursor:
             username = request.session['username']
+            #get picid
             cursor.execute("""
-                INSERT INTO "Like" (uname, org_pinid)
+                select picid
+                from pin
+                where pinid = %s         
+                """, [pinid])
+            picid = cursor.fetchone()[0]
+            cursor.execute("""
+                INSERT INTO "Like" (uname, picid)
                 VALUES (%s, %s)
-                ON CONFLICT (uname, org_pinid) DO NOTHING
-            """, [username, pinid])
-            
-            if cursor.rowcount == 0:
-                cursor.execute("""
-                    DELETE FROM "Like" 
-                    WHERE uname = %s AND org_pinid = %s
-                """, [username, pinid])
+                ON CONFLICT (uname, picid) DO NOTHING
+            """, [username, picid])
             
             return redirect('view_pin', pinid=pinid)
             
